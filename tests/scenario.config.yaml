@@ -1,21 +1,10 @@
-scenario:
-  scene_path: ./tests/scene.db
-  icrm_entries:
-    - test/ISchema
-    - test/IPatch
-    - test/IGrid
-  crm_entries:
-    - name: test/Schema
-      icrm: test/ISchema
-      trigger_script: scripts/schema.crm.py
-    - name: test/Patch
-      icrm: test/IPatch
-      trigger_script: scripts/patch.crm.py
-      dependencies:
-        - test/Schema
-    - name: test/Grid
-      icrm: test/IGrid
-      trigger_script: scripts/grid.crm.py
-      dependencies:
-        - test/Schema
-        - test/Patch
+scene_path: ./tests/scene.db
+scenario_nodes:
+  - name: test/IPatch
+    crm_name: Patch
+    crm_module: tests.crms.patch
+  - name: test/IGrid
+    crm_name: Grid
+    crm_module: tests.crms.grid
+    dependencies:
+      - test/IPatch

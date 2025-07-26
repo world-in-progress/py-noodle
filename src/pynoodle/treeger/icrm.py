@@ -7,6 +7,7 @@ class CRMEntry(BaseModel):
     name: str
     icrm: str
     trigger_script: str
+    dependencies: list[str] | None = None
 
 class ScenarioNode(BaseModel):
     name: str
