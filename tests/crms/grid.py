@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from tests.crms.patch import Patch
 from tests.icrms.igrid import IGrid
-from src.pynoodle.treeger.crm import Treeger
+from pynoodle.scene.treeger import Treeger
 # from crms.treeger import Treeger
 # from crms.solution import HydroElement, HydroSide
 

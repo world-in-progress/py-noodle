@@ -1,10 +1,5 @@
 scene_path: ./tests/scene.db
 scenario_nodes:
-  - name: test/IPatch
-    crm_name: Patch
-    crm_module: tests.crms.patch
-  - name: test/IGrid
-    crm_name: Grid
-    crm_module: tests.crms.grid
-    dependencies:
-      - test/IPatch
+  - name: test/IHello
+    crm_name: Hello
+    crm_module: tests.crms.hello
