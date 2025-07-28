@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class ScenarioNode:
     name: str
     crm_class: T
+    crm_module: str
     dependencies: list['ScenarioNode']
     
     @property
@@ -61,6 +62,7 @@ class Scenario:
             node = ScenarioNode(
                 name=node_description.name,
                 crm_class=crm_class,
+                crm_module=node_description.crm_module,
                 dependencies=[]
             )
             self.graph[node_description.name] = node

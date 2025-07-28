@@ -15,7 +15,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from .icrm import ITreeger
-from ..scenario import Scenario
+from ..scenario import Scenario, ScenarioNode
+from .scene_node import SceneNode, SceneNodeRecord
 from ..schemas import ScenarioConfiguration, ScenarioNodeDescription
 # from .icrm import ITreeger, CRMEntry, TreeMeta, ReuseAction, ScenarioNode, SceneNodeInfo, SceneNodeMeta, ScenarioNodeDescription, CRMDuration
 
@@ -32,34 +33,54 @@ SCENARIO_NODE_NAME = 'scenario_node_name'
 DEPENDENCY_TABLE = 'dependency'
 DEPENDENT_KEY = 'dependent_key'
 
+SERVING_TABLE = 'serving'
+CONNECTION_COUNT = 'connection_count'
+
+CRM_LAUNCHER_IMPORT_TEMPLATE = """
+import logging
+import argparse
+import c_two as cc
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+"""
+
+CRM_LAUNCHER_RUNNING_TEMPLATE = """
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--node_key', type=str, required=True, help='Node key for the SceneNode')
+    parser.add_argument('--params', type=str, help='Json-string of parameters for the CRM')
+    parser.add_argument()
+    args = parser.parse_args()
+    
+    node_key: str = args.node_key
+    crm_params: str = args.params if args.params else None
+    
+    server_address = f'memory://{node_key.replace(".", "_")}'
+    crm = CRM(**cc.json.loads(crm_params)) if crm_params else CRM()
+    server = cc.rpc.Server(server_address, crm, node_key)
+
+    logger.info(f'Starting CRM Server for node {node_key}...')
+    server.start()
+    logger.info(f'CRM Server for node {node_key} started at %s', server_address)
+    try:
+        server.wait_for_termination()
+        server.stop()
+    except KeyboardInterrupt:
+        logger.info(f'KeyboardInterrupt received, terminating CRM Server for node {node_key}...')
+        server.stop()
+    finally:
+        logger.info(f'CRM Server for node {node_key} terminated.')
+"""
+
 @dataclass
 class ProcessInfo:
     address: str
     start_time: float = 0.0
     scenario_node_name: str = ''
     process: subprocess.Popen | None = None
-
-@dataclass
-class SceneNodeRecord:
-    node_key: str
-    scenario_node_name: str | None   # None if this is a resource set node, not a resource node
-    launch_params: str
-    
-    parent_key: str | None = None
-    children: list['SceneNodeRecord'] = field(default_factory=list)
-    
-    def add_child(self, child: 'SceneNodeRecord'):
-        self.children.append(child)
-        self.children.sort(key=lambda child: child.node_key.split('.')[-1].lower())  # sort children by their name
-        child.parent_key = self.node_key
-    
-    def add_children(self, children: list['SceneNodeRecord']):
-        for child in children:
-            self.add_child(child)
-    
-    @property
-    def is_set(self):
-        return self.scenario_node_name is None
 
 # @cc.iicrm
 class Treeger():
@@ -101,6 +122,17 @@ class Treeger():
                     FOREIGN KEY ({DEPENDENT_KEY}) REFERENCES {SCENE_TABLE} ({NODE_KEY}) ON DELETE CASCADE
                 )
             """)
+            
+            # Create the serving table
+            conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS {SERVING_TABLE} (
+                    {NODE_KEY} TEXT NOT NULL,
+                    {CONNECTION_COUNT} INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY ({NODE_KEY}),
+                    FOREIGN KEY ({NODE_KEY}) REFERENCES {SCENE_TABLE} ({NODE_KEY}) ON DELETE CASCADE
+                )
+            """)
+            
             conn.execute(f'CREATE INDEX IF NOT EXISTS idx_{DEPENDENT_KEY} ON {DEPENDENCY_TABLE}({DEPENDENT_KEY})')
             
             conn.commit()
@@ -147,9 +179,9 @@ class Treeger():
     def _get_child_keys_from_db(self, parent_key: str) -> list[str]:
         """Get all child node keys for a given parent from databse"""
         with self._connect_db() as conn:
-            cursor = conn.execute(f'SELECT {NODE_KEY} FROM {SCENE_TABLE} WHERE parent_key = ?', (parent_key,))
-            return [row['node_key'] for row in cursor.fetchall()]
-    
+            cursor = conn.execute(f'SELECT {NODE_KEY} FROM {SCENE_TABLE} WHERE {PARENT_KEY} = ?', (parent_key,))
+            return [row[NODE_KEY] for row in cursor.fetchall()]
+
     def _delete_node_from_db(self, node_key: str) -> None:
         """Delete a node from the database"""
         with self._connect_db() as conn:
@@ -171,19 +203,19 @@ class Treeger():
                 return None
             
             # Get SceneNode attributes
-            node_key = row['node_key']
-            parent_key = row['parent_key'] if row['parent_key'] else None
-            launch_params = row['launch_params'] if row['launch_params'] else ''
-            scenario_node = row['scenario_node_name'] if row['scenario_node_name'] else None
+            node_key = row[NODE_KEY]
+            parent_key = row[PARENT_KEY] if row[PARENT_KEY] else None
+            launch_params = row[LAUNCH_PARAMS] if row[LAUNCH_PARAMS] else ''
+            scenario_node = self.scenario[row[SCENARIO_NODE_NAME]] if row[SCENARIO_NODE_NAME] else None
             if scenario_node is None:
-                logger.error(f'Scenario node {row["scenario_node_name"]} not found in scenario graph')
+                logger.error(f'Scenario node {row[SCENARIO_NODE_NAME]} not found in scenario graph')
                 return None
             
             # Create SceneNode instance
             node = SceneNodeRecord(
                 node_key=node_key,
                 parent_key=parent_key,
-                scenario_node_name=scenario_node,
+                scenario_node=scenario_node,
                 launch_params=launch_params
             )
             
@@ -198,18 +230,14 @@ class Treeger():
                     cursor = conn.execute(f"""
                         SELECT {NODE_KEY}, {SCENARIO_NODE_NAME} FROM {SCENE_TABLE} WHERE {PARENT_KEY} = ?
                     """, (node_key,))
-                    
-                    for child_row in cursor.fetchall():
-                        child_scenario_node = self.scenario_node_dict.get(child_row['scenario_node_name'])
-                        if child_scenario_node:
-                            child_node = SceneNodeRecord(
-                                node_key=child_row['node_key'],
-                                scenario_node_name=child_scenario_node,
-                                launch_params=''
-                            )
-                            node.add_child(child_node)
-                        else:
-                            logger.error(f'Scenario node {child_row["scenario_node_name"]} not found in scenario graph')
+                    child_rows = cursor.fetchall()
+                    for child_row in child_rows:
+                        child_node = SceneNodeRecord(
+                            node_key=child_row[NODE_KEY],
+                            scenario_node=self.scenario[child_row[SCENARIO_NODE_NAME]] if child_row[SCENARIO_NODE_NAME] else None,
+                            launch_params=''
+                        )
+                        node.add_child(child_node)
 
             return node
     
@@ -224,6 +252,49 @@ class Treeger():
         with self._connect_db() as conn:
             cursor = conn.execute(f'SELECT 1 FROM {DEPENDENCY_TABLE} WHERE {DEPENDENT_KEY} = ?', (node_key,))
             return cursor.fetchone() is not None
+    
+    def _is_node_serving_in_process(self, node_key: str) -> bool:
+        """Check if a node is serving in a process"""
+        with self._connect_db() as conn:
+            cursor = conn.execute(f'SELECT 1 FROM {SERVING_TABLE} WHERE {NODE_KEY} = ?', (node_key,))
+            return cursor.fetchone() is not None
+    
+    def _add_node_to_serving(self, node_key: str) -> None:
+        """Add a node to the serving table"""
+        with self._connect_db() as conn:
+            conn.execute(f"""
+                INSERT OR IGNORE INTO {SERVING_TABLE} ({NODE_KEY}, {CONNECTION_COUNT})
+                VALUES (?, 0)
+            """, (node_key,))
+            conn.commit()
+    
+    def _increment_node_connection(self, node_key: str) -> None:
+        """Increment the connection count for a node in the serving table"""
+        with self._connect_db() as conn:
+            conn.execute(f"""
+                UPDATE {SERVING_TABLE}
+                SET {CONNECTION_COUNT} = {CONNECTION_COUNT} + 1
+                WHERE {NODE_KEY} = ?
+            """, (node_key,))
+            conn.commit()
+    
+    def _decrement_node_connection(self, node_key: str) -> None:
+        """Decrement the connection count for a node in the serving table"""
+        # Get connection count
+        with self._connect_db() as conn:
+            cursor = conn.execute(f'SELECT {CONNECTION_COUNT} FROM {SERVING_TABLE} WHERE {NODE_KEY} = ?', (node_key,))
+            row = cursor.fetchone()
+            if row is None:
+                return
+            connection_count = row[CONNECTION_COUNT] - 1
+            if connection_count <= 0:
+                # Delete the node from the serving table if connection count is 0
+                conn.execute(f'DELETE FROM {SERVING_TABLE} WHERE {NODE_KEY} = ?', (node_key,))
+                # Shutdown the CRM server
+                cc.rpc.Client.shutdown(f'memory://{str.join('_', node_key.split('.'))}', timeout=60)
+            else:
+                # Update the connection count
+                conn.execute(f'UPDATE {SERVING_TABLE} SET {CONNECTION_COUNT} = ? WHERE {NODE_KEY} = ?', (connection_count, node_key))
 
     def mount_node(self, node_key: str, scenario_node_name: str = '', launch_params: str = '', dependent_node_keys: list[str] = []) -> None:
         # Check if node already exists in db
@@ -253,7 +324,7 @@ class Treeger():
                 if not self._node_exists_in_db(dep_key):
                     raise ValueError(f'Dependency node {dep_key} not found in scene for node {node_key}')
                 dep_node = self._load_node_from_db(dep_key, is_cascade=False)
-                dep_map[dep_node.scenario_node_name] = True
+                dep_map[dep_node.scenario_node.name] = True
                 
             if not all(dep_map.values()):
                 missing_deps = [name for name, exists in dep_map.items() if not exists]
@@ -313,18 +384,64 @@ class Treeger():
         
         logger.info(f'Successfully unmounted node "{node_key}"')
         return True
-    
-    def fork_node(self, node_key: str, icrm: Type[T]) -> T:
+
+    def get_node(self, node_key: str, writable: bool, shared: bool) -> SceneNode:
         node_record = self._load_node_from_db(node_key, is_cascade=False)
         if node_record is None:
             raise ValueError(f'Node "{node_key}" not found in scene tree')
-
-        scenario_node = self.scenario[node_record.scenario_node_name]
-        if scenario_node is None:
-            raise ValueError(f'Scenario node "{node_record.scenario_node_name}" not found in scenario graph')
+        if node_record.scenario_node is None:
+            raise ValueError(f'Node "{node_key}" is a resource set node, cannot get its service')
         
-        crm = scenario_node.crm_class
+        # Create an In-Thread CRM duplication
+        # Return a SceneNode instance containing the duplication
+        if not writable and not shared:
+            # Create a duplication
+            crm_class = node_record.scenario_node.crm_class
+            crm_params = json.loads(node_record.launch_params)
+            crm = crm_class(**crm_params)
+            node = SceneNode(crm, self.scene_path, node_record)
+            return node
         
+        # Create a Process-Level CRM server
+        # Return a SceneNode instance containing a related ICRM
+        elif writable or (not writable and shared):
+            import_script = f'from {node_record.scenario_node.crm_module} import {node_record.scenario_node.icrm_class.__name__} as CRM\n'
+            scripts = CRM_LAUNCHER_IMPORT_TEMPLATE + import_script + CRM_LAUNCHER_RUNNING_TEMPLATE
+            
+            subprocess_args = [
+                sys.executable,
+                '-c',
+                scripts,
+                '--node_key', node_key,
+                '--params', node_record.launch_params
+            ]
+            
+            # Try to launch a CRM server (Process-Level) related to the node
+            try:
+                # Platform-specific subprocess arguments
+                kwargs = {}
+                if sys.platform != 'win32':
+                    # Unix-specific: create new process group
+                    kwargs['preexec_fn'] = os.setsid
+                
+                cmd = [
+                    sys.executable,
+                    '-c',
+                    scripts,
+                    '--node_key', node_key,
+                    '--params', node_record.launch_params
+                ]
+            
+                subprocess.Popen(
+                    cmd,
+                    **kwargs,
+                )
+                
+                self._add_node_to_serving(node_key)
+                self._increment_node_connection(node_key)
+            
+            except Exception as e:
+                raise RuntimeError(f'Failed to launch CRM server for node {node_key}: {e}')
 
     # def _release_crm_process(self, node_key: str):
     #     if node_key in self.process_pool:
