@@ -1,29 +1,19 @@
-import json
-from pathlib import Path
-import c_two as cc
-from src.pynoodle import crm
 from tests.icrms.ihello import IHello
+from tests.icrms.inames import INames
+from src.pynoodle import crm, Noodle, SceneNode
 
 @crm
 class Hello(IHello):
     def __init__(self):
-        self.name_path = Path.cwd() / 'tests' / 'crms' / 'names.json'
-        if not self.name_path.exists():
-            self.name_path.parent.mkdir(parents=True, exist_ok=True)
-            self.names: list[str] = []
-        else:
-            with open(self.name_path, 'r') as f:
-                self.names = json.load(f)['names']
-                
-    def set_name(self, name: str) -> None:
-        if name not in self.names:
-            self.names.append(name)
+        self.nood = Noodle()
     
     def greet(self, index: int) -> str:
-        if index < 0 or index >= len(self.names):
-            raise IndexError('Index out of range')
-        return f'Hello, {self.names[index]}!'
+        node = self.nood.get_node(INames, 'names', False, 'l')
+        try:
+            names = node.crm.get_names()
+            return f'Hello, {names[index]}!'
+        finally:
+            node.terminate()
     
     def terminate(self) -> None:
-        with open(self.name_path, 'w') as f:
-            json.dump({'names': self.names}, f)
+        pass

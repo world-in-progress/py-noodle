@@ -1,10 +1,9 @@
 import sqlite3
 import logging
 import subprocess
-import c_two as cc
 from dataclasses import dataclass
-from typing import TypeVar, Literal
 from contextlib import contextmanager
+from typing import TypeVar, Literal, Type, Generator
 
 from .lock import RWLock
 from ..scenario import Scenario
@@ -19,7 +18,7 @@ NODE_KEY = 'node_key'
 PARENT_KEY = 'parent_key'
 LAUNCH_PARAMS = 'launch_params'
 SCENARIO_NODE_NAME = 'scenario_node_name'
-READING_COUNT = 'reading_count'
+IS_LOCAL = 'is_local'
 
 DEPENDENCY_TABLE = 'dependency'
 DEPENDENT_KEY = 'dependent_key'
@@ -51,9 +50,9 @@ class Treeger:
                 CREATE TABLE IF NOT EXISTS {SCENE_TABLE} (
                     {PARENT_KEY} TEXT,
                     {LAUNCH_PARAMS} TEXT,
+                    {SCENARIO_NODE_NAME} TEXT,
                     {NODE_KEY} TEXT PRIMARY KEY,
-                    {SCENARIO_NODE_NAME} TEXT NOT NULL,
-                    {READING_COUNT} INTEGER NOT NULL DEFAULT 0,
+                    {IS_LOCAL} BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY ({PARENT_KEY}) REFERENCES {SCENE_TABLE} ({NODE_KEY}) ON DELETE CASCADE
                 )
@@ -192,7 +191,7 @@ class Treeger:
             cursor = conn.execute(f'SELECT 1 FROM {DEPENDENCY_TABLE} WHERE {DEPENDENT_KEY} = ?', (node_key,))
             return cursor.fetchone() is not None
         
-    def mount_node(self, node_key: str, scenario_node_name: str = '', launch_params: str = '', dependent_node_keys: list[str] = []) -> None:
+    def mount_node(self, node_key: str, scenario_node_name: str = '', launch_params: str = '', dependent_node_keys: list[str] = [], is_local: bool = True) -> None:
         # Check if node already exists in db
         if (self._node_exists_in_db(node_key)):
             logger.debug(f'Node {node_key} already mounted, skipping')
@@ -282,11 +281,12 @@ class Treeger:
 
     def get_node(
         self,
+        icrm_class: Type[T],
         node_key: str, writable: bool, 
         access_mode: Literal['l', 'p'],
         timeout: float | None = None,
         retry_interval: float = 1.0
-    ) -> SceneNode:
+    ) -> SceneNode[T]:
         node_record = self._load_node_from_db(node_key, is_cascade=False)
         if node_record is None:
             raise ValueError(f'Node "{node_key}" not found in scene tree')
@@ -294,7 +294,24 @@ class Treeger:
             raise ValueError(f'Node "{node_key}" is a resource set node, cannot get its service')
         
         return SceneNode(
+            icrm_class,
             self.scene_path, node_record,
             'w' if writable else 'r',
             access_mode, timeout, retry_interval
         )
+    
+    @contextmanager
+    def connect_node(
+        self,
+        icrm_class: Type[T],
+        node_key: str, writable: bool, 
+        access_mode: Literal['l', 'p'],
+        timeout: float | None = None,
+        retry_interval: float = 1.0
+    ) -> Generator[SceneNode[T], None, None]:
+        """Context manager to connect to a node"""
+        node = self.get_node(icrm_class, node_key, writable, access_mode, timeout, retry_interval)
+        try:
+            yield node
+        finally:
+            node.terminate()

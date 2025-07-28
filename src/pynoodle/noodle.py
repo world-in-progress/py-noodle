@@ -15,16 +15,15 @@ logger = logging.getLogger(__name__)
 icrm = cc.icrm
 transferable = cc.transferable
 
-def crm(cls):
+def crm(cls: T) -> T:
     if not hasattr(cls, 'terminate'):
         raise TypeError(f'Class {cls.__name__} does not have a "terminate" method')
     
     return cc.iicrm(cls)
 
-class Noodle:
+class Noodle(Treeger):
     def __init__(self):
-        self.scenario = Scenario()
-        self.treeger = Treeger(self.scenario)
+        super().__init__(Scenario())
     
     @staticmethod
     def init():
@@ -37,10 +36,10 @@ class Noodle:
         config = ScenarioConfiguration(**config_data)
         
         # Pre-remove all locks if configured
-        scene_path = Path(config.scene_path)
-        if not scene_path.is_absolute():
-            scene_path = Path.cwd() / scene_path
         if settings.PRE_REMOVE_ALL_LOCKS:
+            scene_path = Path(config.scene_path)
+            if not scene_path.is_absolute():
+                scene_path = Path.cwd() / scene_path
             RWLock.clear_all(scene_path)
 
         # Pre-remove existing memory temp directory if configured

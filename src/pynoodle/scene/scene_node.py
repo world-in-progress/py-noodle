@@ -6,7 +6,7 @@ import subprocess
 import c_two as cc
 from pydantic import BaseModel
 from dataclasses import dataclass, field
-from typing import TypeVar, Generic, Literal
+from typing import TypeVar, Type, Generic, Literal
 
 from .lock import RWLock
 from ..scenario import ScenarioNode
@@ -47,6 +47,7 @@ class SceneNodeRecord:
 class SceneNode(Generic[T]):
     def __init__(
         self,
+        icrm_class: Type[T],
         scene_path: str,
         record: SceneNodeRecord,
         lock_type: Literal['r', 'w'],
@@ -101,6 +102,7 @@ class SceneNode(Generic[T]):
             return self._crm
         
         elif self._access_mode == 'p':
+            # if not RWLock.is_node_active(self.scene_path, self.node_key):
             import_script = f'from {self._crm_module} import {self._crm_class.__name__} as CRM\n'
             scripts = CRM_LAUNCHER_IMPORT_TEMPLATE + import_script + CRM_LAUNCHER_RUNNING_TEMPLATE
             
@@ -137,13 +139,13 @@ class SceneNode(Generic[T]):
                         raise TimeoutError(f'CRM server "{self.node_key}" did not start in time')
                     time.sleep(0.5)
                     count += 1
-                
-                client = cc.rpc.Client(address) # add a C-Two RPC client
-                self._crm.client = client
-                return self._crm
             
             except Exception as e:
                 raise RuntimeError(f'Failed to launch CRM server for node "{self.node_key}": {e}')
+                
+            client = cc.rpc.Client(address) # add a C-Two RPC client
+            self._crm.client = client
+            return self._crm
     
     def terminate(self):
         # For Local-level CRM, terminate it manually

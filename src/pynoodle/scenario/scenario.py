@@ -1,10 +1,10 @@
-import os
 import yaml
 import logging
 from pathlib import Path
 from typing import TypeVar
 from dataclasses import dataclass
 
+from ..config import settings
 from .schemas import ScenarioConfiguration, ScenarioNodeDescription
 
 T = TypeVar('T')
@@ -22,12 +22,12 @@ class ScenarioNode:
         return self.name.split('/')[0]
     
     @property
-    def icrm_name(self) -> str:
-        return self.name.split('/')[1]
-    
-    @property
     def crm_name(self) -> str:
         return self.crm_class.__name__
+    
+    @property
+    def icrm_name(self) -> str:
+        return self.crm_class.__base__.__name__
     
     @property
     def icrm_class(self) -> T:
@@ -35,12 +35,8 @@ class ScenarioNode:
 
 class Scenario:
     def __init__(self):
-        configuration_path = os.getenv('NOODLE_CONFIG_PATH', None)
-        if not configuration_path:
-            raise ValueError('NOODLE_CONFIG_PATH environment variable is not set, Treeger cannot be initialized')
-        
         # Read configuration
-        configuration_path = Path(configuration_path)
+        configuration_path = Path(settings.NOODLE_CONFIG_PATH)
         if not configuration_path.is_absolute():
             configuration_path = Path.cwd() / configuration_path
         with open(configuration_path, 'r') as f:

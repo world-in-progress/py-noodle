@@ -13,10 +13,13 @@ class RWLock:
         self,
         db_path: str,
         node_key: str,
+        # access_mode: Literal['l', 'p'],
         lock_type: Literal['r', 'w'],
         timeout: float | None = None,
         retry_interval: float = 1.0
     ):
+        # if access_mode not in ['l', 'p']:
+        #     raise ValueError("access_mode must be either 'l' for local or 'p' for process-level")
         if lock_type not in ['r', 'w']:
             raise ValueError("lock_type must be either 'r' for read or 'w' for write")
         
@@ -49,10 +52,15 @@ class RWLock:
             conn.commit()
     
     @staticmethod
-    def is_node_active(db_path: str, node_key: str) -> bool:
+    def is_node_active(db_path: str, node_key: str, lock_type: Literal['r', 'w'] | None = None) -> bool:
         """Check if a node is currently active."""
+        if lock_type is not None and lock_type not in ['r', 'w']:
+            raise ValueError("lock_type must be either 'r' for read or 'w' for write")
         with sqlite3.connect(db_path) as conn:
-            cursor = conn.execute("SELECT 1 FROM locks WHERE node_key = ?", (node_key,))
+            if lock_type is None:
+                cursor = conn.execute("SELECT 1 FROM locks WHERE node_key = ?", (node_key,))
+                return cursor.fetchone() is not None
+            cursor = conn.execute("SELECT 1 FROM locks WHERE node_key = ? AND lock_type = ?", (node_key, lock_type))
             return cursor.fetchone() is not None
     
     @staticmethod
@@ -81,10 +89,17 @@ class RWLock:
                 
                 can_acquire = False
                 if self.lock_type == 'w':
-                    # For a write lock, no other locks should exist for this resource.
+                    # For a write lock, no other locks should exist for this resource (except for this one).
                     cursor.execute('SELECT COUNT(*) FROM locks WHERE node_key = ?', (self.node_key,))
-                    if cursor.fetchone()[0] == 0:
+                    lock_count = cursor.fetchone()[0]
+                    if lock_count == 0:
                         can_acquire = True
+                    # elif lock_count == 1:
+                    #     # If there is already a lock, check if it's this lock.
+                    #     cursor.execute("SELECT lock_id FROM locks WHERE node_key = ? AND lock_type = 'w'", (self.node_key,))
+                    #     existing_lock_id = cursor.fetchone()
+                    #     if existing_lock_id and existing_lock_id[0] == self.lock_id:
+                    #         return True
                 else: # 'r'
                     # For a read lock, no write locks should exist for this resource.
                     cursor.execute("SELECT COUNT(*) FROM locks WHERE node_key = ? AND lock_type = 'w'", (self.node_key,))
