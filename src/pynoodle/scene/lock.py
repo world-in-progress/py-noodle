@@ -13,7 +13,6 @@ class RWLock:
         self,
         db_path: str,
         node_key: str,
-        # access_mode: Literal['l', 'p'],
         lock_type: Literal['r', 'w'],
         timeout: float | None = None,
         retry_interval: float = 1.0
@@ -52,15 +51,10 @@ class RWLock:
             conn.commit()
     
     @staticmethod
-    def is_node_active(db_path: str, node_key: str, lock_type: Literal['r', 'w'] | None = None) -> bool:
+    def is_node_active(db_path: str, node_key: str) -> bool:
         """Check if a node is currently active."""
-        if lock_type is not None and lock_type not in ['r', 'w']:
-            raise ValueError("lock_type must be either 'r' for read or 'w' for write")
         with sqlite3.connect(db_path) as conn:
-            if lock_type is None:
-                cursor = conn.execute("SELECT 1 FROM locks WHERE node_key = ?", (node_key,))
-                return cursor.fetchone() is not None
-            cursor = conn.execute("SELECT 1 FROM locks WHERE node_key = ? AND lock_type = ?", (node_key, lock_type))
+            cursor = conn.execute('SELECT 1 FROM locks WHERE node_key = ?', (node_key,))
             return cursor.fetchone() is not None
     
     @staticmethod
@@ -138,10 +132,3 @@ class RWLock:
             except Exception as e:
                 # Log this error, as failure to release a lock can be critical
                 logger.error(f'Error releasing lock {self.lock_id}: {e}')
-                
-    def __enter__(self):
-        self.acquire()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.release()

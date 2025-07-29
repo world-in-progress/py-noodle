@@ -1,6 +1,9 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    # Server settings
+    SERVER_PORT: int = 8000
+    
     # Noodle CRM settings
     NOODLE_CONFIG_PATH: str = './noodle.config.yaml'
     

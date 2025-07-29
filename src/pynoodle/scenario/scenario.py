@@ -5,7 +5,7 @@ from typing import TypeVar
 from dataclasses import dataclass
 
 from ..config import settings
-from .schemas import ScenarioConfiguration, ScenarioNodeDescription
+from ..schemas.scenario import ScenarioConfiguration
 
 T = TypeVar('T')
 logger = logging.getLogger(__name__)

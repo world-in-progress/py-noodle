@@ -26,7 +26,8 @@ class NodeMessage(BaseModel):
 class SceneNodeRecord:
     node_key: str
     scenario_node: ScenarioNode | None   # None if this is a resource set node, not a resource node
-    launch_params: str
+    launch_params: str | None = None
+    access_info: str | None = None
     
     parent_key: str | None = None
     children: list['SceneNodeRecord'] = field(default_factory=list)
@@ -50,22 +51,23 @@ class SceneNode(Generic[T]):
         icrm_class: Type[T],
         scene_path: str,
         record: SceneNodeRecord,
-        lock_type: Literal['r', 'w'],
-        access_mode: Literal['l', 'p'],
+        access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None,
         retry_interval: float = 1.0
     ):
+        access_level = access_mode[0]
+        lock_type = access_mode[1]
+        
         if lock_type not in ['r', 'w']:
-            raise ValueError("lock_type must be either 'r' for read or 'w' for write")
-        if access_mode not in ['l', 'p']:
-            raise ValueError("access_mode must be either 'l' for local or 'p' for process-level")
+            raise ValueError("lock type must be either 'r' for read or 'w' for write")
+        if access_level not in ['l', 'p']:
+            raise ValueError("access level must be either 'l' for local or 'p' for process-level")
         
         self.scene_path = scene_path
         self.node_key = record.node_key
-        self.namespace = record.scenario_node.namespace
         
         self._crm: T = None
-        self._access_mode = access_mode
+        self._access_level = access_level
         self._crm_params = record.launch_params
         self._crm_class = record.scenario_node.crm_class
         self._crm_module = record.scenario_node.crm_module
@@ -73,21 +75,21 @@ class SceneNode(Generic[T]):
     
     @property
     def server_scheme(self) -> Literal['local', 'memory']:
-        if self._access_mode == 'l':
+        if self._access_level == 'l':
             return 'local'
-        elif self._access_mode == 'p':
+        elif self._access_level == 'p':
             return 'memory'
         else:
-            raise ValueError(f'Unknown access mode: {self._access_mode}')
+            raise ValueError(f'Unknown access mode: {self._access_level}')
     
     @property
     def server_address(self) -> str:
         scheme = ''
-        if self._access_mode == 'l':
+        if self._access_level == 'l':
             scheme = 'local://'
-        elif self._access_mode == 'p':
+        elif self._access_level == 'p':
             scheme = 'memory://'
-        return scheme + self.namespace + '_' + self.node_key.replace('.', '_')
+        return scheme + self.node_key.replace('.', '_')
         
     @property
     def crm(self) -> T:
@@ -96,12 +98,12 @@ class SceneNode(Generic[T]):
         
         self._lock.acquire()
         
-        if self._access_mode == 'l':
+        if self._access_level == 'l':
             params = json.loads(self._crm_params) if self._crm_params else {}
             self._crm = self._crm_class(**params)
             return self._crm
         
-        elif self._access_mode == 'p':
+        elif self._access_level == 'p':
             # if not RWLock.is_node_active(self.scene_path, self.node_key):
             import_script = f'from {self._crm_module} import {self._crm_class.__name__} as CRM\n'
             scripts = CRM_LAUNCHER_IMPORT_TEMPLATE + import_script + CRM_LAUNCHER_RUNNING_TEMPLATE
@@ -149,11 +151,11 @@ class SceneNode(Generic[T]):
     
     def terminate(self):
         # For Local-level CRM, terminate it manually
-        if self._access_mode == 'l':
+        if self._access_level == 'l':
             self._crm.terminate()
         
         # For Process-level CRM, just shutdown the C-Two client
-        elif self._access_mode == 'p':
+        elif self._access_level == 'p':
             self._crm.client.shutdown(self.server_address)
             
         # Release the lock
