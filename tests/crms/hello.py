@@ -5,16 +5,11 @@ from tests.icrms.inames import INames
 @crm
 class Hello(IHello):
     def __init__(self, names_node_key: str):
-        self.nood = Noodle()
-        self.names_node_key = names_node_key
+        self.names_node = Noodle().get_node(INames, names_node_key, 'lr')
     
     def greet(self, index: int) -> str:
-        node = self.nood.get_node(INames, self.names_node_key, 'lr')
-        try:
-            names = node.crm.get_names()
-            return f'Hello, {names[index]}!'
-        finally:
-            node.terminate()
+        names = self.names_node.crm.get_names()
+        return f'Hello, {names[index]}!'
     
     def terminate(self) -> None:
-        pass
+        self.names_node.terminate()

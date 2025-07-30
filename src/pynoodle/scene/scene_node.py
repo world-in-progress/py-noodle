@@ -52,14 +52,14 @@ class SceneNodeProxy(Generic[T]):
         self,
         icrm_class: Type[T], access_info: str,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
-        timeout: float | None = None, retry_interval: float = 1.0
+        timeout: float | None = None, retry_interval: float = 0.1
     ):
         remote_url, remote_key = access_info.split('::')
         self._icrm_class = icrm_class
         self._remote_url = remote_url
         self._remote_key = remote_key
         self._remote_lock_id: str | None = None
-        self._access_level = access_mode[0]
+        self._lock_type = access_mode[1]
         self._timeout = timeout
         self._retry_interval = retry_interval
         self._crm: T = None
@@ -71,9 +71,10 @@ class SceneNodeProxy(Generic[T]):
         
         # Get the remote lock from the remote Noodle
         # Refer to activate_node() in src/pynoodle/endpoints/proxy.py for more details about the lock API
-        lock_api = f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}&lock_type={self._access_level}' \
-                 + f'&timeout={self._timeout}' if self._timeout is not None else '' \
-                 + f'&retry_interval={self._retry_interval}'
+        lock_api = (
+            f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}&lock_type={self._lock_type}&retry_interval={self._retry_interval}' \
+            + (f'&timeout={self._timeout}' if self._timeout is not None else '')
+        )
         response = requests.get(lock_api)
         if response.status_code != 200:
             raise RuntimeError(f'Failed to acquire lock for remote CRM server: {response.text}')
@@ -95,7 +96,6 @@ class SceneNodeProxy(Generic[T]):
         response = requests.delete(deactivate_api)
         if response.status_code != 200:
             raise RuntimeError(f'Failed to deactivate remote CRM server: {response.text}')
-        self.lock.release()
         return
         
 
@@ -104,7 +104,7 @@ class SceneNode(Generic[T]):
         self,
         icrm_class: Type[T], record: SceneNodeRecord,   # icrm_class only used for type hinting
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
-        timeout: float | None = None, retry_interval: float = 1.0
+        timeout: float | None = None, retry_interval: float = 0.1
     ):
         access_level = access_mode[0]
         lock_type = access_mode[1]
@@ -189,9 +189,10 @@ class SceneNode(Generic[T]):
         if is_proxy:
             # Get the twin lock from the remote Noodle
             # Refer to activate_node() in src/pynoodle/endpoints/proxy.py for more details about the lock API
-            lock_api = f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}&lock_type={self._access_level}' \
-                     + f'&timeout={self.lock.timeout}' if self.lock.timeout is not None else '' \
-                     + f'&retry_interval={self.lock.retry_interval}'
+            lock_api = (
+                f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}&lock_type={self._lock_type}&retry_interval={self.lock.retry_interval}' \
+                + (f'&timeout={self.lock.timeout}' if self.lock.timeout is not None else '')
+            )
             response = requests.get(lock_api)
             if response.status_code != 200:
                 raise RuntimeError(f'Failed to acquire lock for remote CRM server: {response.text}')

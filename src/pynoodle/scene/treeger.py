@@ -64,9 +64,7 @@ class Treeger:
                 CREATE TABLE IF NOT EXISTS {DEPENDENCY_TABLE} (
                     {NODE_KEY} TEXT NOT NULL,
                     {DEPENDENT_KEY} TEXT NOT NULL,
-                    PRIMARY KEY ({NODE_KEY}, {DEPENDENT_KEY}),
-                    FOREIGN KEY ({NODE_KEY}) REFERENCES {SCENE_TABLE} ({NODE_KEY}) ON DELETE CASCADE,
-                    FOREIGN KEY ({DEPENDENT_KEY}) REFERENCES {SCENE_TABLE} ({NODE_KEY}) ON DELETE CASCADE
+                    PRIMARY KEY ({NODE_KEY}, {DEPENDENT_KEY})
                 )
             """)
             
@@ -107,6 +105,9 @@ class Treeger:
             
             # Add dependencies to the dependency table
             for dep_key in dependent_node_keys_or_infos:
+                # is_remote = dep_key.startswith('http')
+                # if is_remote:
+                #     continue
                 conn.execute(f"""
                     INSERT OR IGNORE INTO {DEPENDENCY_TABLE} ({NODE_KEY}, {DEPENDENT_KEY})
                     VALUES (?, ?)
@@ -117,9 +118,11 @@ class Treeger:
     def _delete_node(self, node_key: str) -> None:
         """Delete a node from the database"""
         with self._connect_db() as conn:
-            # Only delete node from the scene table
-            # Dependencies are automatically deleted due to ON DELETE CASCADE in the dependency table
+            # Delete node from the scene table
             conn.execute(f'DELETE FROM {SCENE_TABLE} WHERE {NODE_KEY} = ?', (node_key,))
+            
+            # Delete dependencies from the dependency table
+            conn.execute(f'DELETE FROM {DEPENDENCY_TABLE} WHERE {NODE_KEY} = ?', (node_key,))
             conn.commit()
     
     def _get_child_keys(self, parent_key: str) -> list[str]:
@@ -217,7 +220,7 @@ class Treeger:
             """, (node_key, parent_key, scenario_node_name, access_info))
             conn.commit()
 
-        # Add dependency relation to the remote noodle
+        # Add dependency relation to the remote Noodle
         req = DependencyRequest(
             method='ADD',
             node_key=remote_node_key,
@@ -281,6 +284,18 @@ class Treeger:
                             raise ValueError(f'Dependency node {dep_key} has no scenario node name in remote noodle {access_url}')
                         
                         dep_map[dep_node_info.scenario_node_name] = True
+                        
+                        # Add dependency to the remote Noodle
+                        req = DependencyRequest(
+                            method='ADD',
+                            node_key=dep_key,
+                            dependent_key=node_key,
+                            dependent_url=self.url,
+                        )
+                        response = requests.post(f'{access_url}/noodle/dependencies/', json=req.model_dump())
+                        if response.status_code != 200:
+                            logger.error(f'Failed to add dependency to remote noodle: {response.text}')
+                            raise requests.RequestException(f'Failed to add dependency: {response.text}')
                         
                     except requests.RequestException as e:
                         raise ValueError(f'Failed to fetch dependency node {dep_key} from remote noodle {access_url}: {e}')
@@ -379,22 +394,23 @@ class Treeger:
         timeout: float | None = None,
         retry_interval: float = 1.0
     ) -> SceneNode[T] | SceneNodeProxy[T]:
+        is_remote = node_key.startswith('http')
+        if is_remote:
+            return SceneNodeProxy(
+                icrm_class, node_key,
+                access_mode, timeout, retry_interval
+            )
+        
         node_record = self._load_node(node_key, is_cascade=False)
         if node_record is None:
             raise ValueError(f'Node "{node_key}" not found in scene tree')
         if node_record.scenario_node is None:
             raise ValueError(f'Node "{node_key}" is a resource set node, cannot get its service')
         
-        if node_record.access_info is None:
-            return SceneNode(
-                icrm_class, node_record,
-                access_mode, timeout, retry_interval
-            )
-        else:
-            return SceneNodeProxy(
-                icrm_class, node_record.access_info,
-                access_mode, timeout, retry_interval
-            )
+        return SceneNode(
+            icrm_class, node_record,
+            access_mode, timeout, retry_interval
+        )
     
     @contextmanager
     def connect_node(
