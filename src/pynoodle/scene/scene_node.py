@@ -190,7 +190,7 @@ class SceneNode(Generic[T]):
             # Get the twin lock from the remote Noodle
             # Refer to activate_node() in src/pynoodle/endpoints/proxy.py for more details about the lock API
             lock_api = (
-                f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}&lock_type={self._lock_type}&retry_interval={self.lock.retry_interval}' \
+                f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}&lock_type={self.lock.lock_type}&retry_interval={self.lock.retry_interval}' \
                 + (f'&timeout={self.lock.timeout}' if self.lock.timeout is not None else '')
             )
             response = requests.get(lock_api)

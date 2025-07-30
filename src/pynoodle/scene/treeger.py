@@ -143,7 +143,7 @@ class Treeger:
                     raise requests.RequestException(f'Failed to remove dependency: {response.text}')
 
             # Delete dependencies from the dependency table
-            conn.execute(f'DELETE FROM {DEPENDENCY_TABLE} WHERE {NODE_KEY} = ?', (node_key,))
+            conn.execute(f'DELETE FROM {DEPENDENCY_TABLE} WHERE {DEPENDENT_KEY} = ?', (node_key,))
             conn.commit()
     
     def _get_child_keys(self, parent_key: str) -> list[str]:
@@ -232,6 +232,11 @@ class Treeger:
         node_key: str, scenario_node_name: str,
         server_url: str, remote_node_key: str
     ) -> None:
+        # Check if node already exists in db
+        if (self._has_node(node_key)):
+            logger.debug(f'Node {node_key} already exists, skipping')
+            return
+        
         parent_key = '.'.join(node_key.split('.')[:-1])
         access_info = f'{server_url}::{remote_node_key}'
         with self._connect_db() as conn:
