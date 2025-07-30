@@ -4,12 +4,17 @@ from fastapi import FastAPI
 
 from .config import settings
 from .endpoints import router
+from .scene import RWLock, Treeger
 
 logger = logging.getLogger(__name__)
 
-from .scene import RWLock
-
 def NOODLE_INIT(app: FastAPI | None = None) -> None:
+        # Initialize Treeger
+        Treeger.init()
+        
+        # Initialize RWLock
+        RWLock.init()
+    
         # Pre-remove all locks if configured
         if settings.PRE_REMOVE_ALL_LOCKS:
             RWLock.clear_all()

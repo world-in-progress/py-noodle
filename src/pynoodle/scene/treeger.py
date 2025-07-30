@@ -39,9 +39,10 @@ class Treeger:
         self.url = f'http://{ip}:{port}'
         
         # Initialize scene db
-        self._init_scene()
-            
-    def _init_scene(self):
+        self.init()
+    
+    @staticmethod
+    def init():
         # Create the database file if it doesn't exist
         with sqlite3.connect(settings.SQLITE_PATH) as conn:
             # Create the scene table

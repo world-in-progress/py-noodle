@@ -29,14 +29,13 @@ class RWLock:
         self.timeout = timeout if (timeout is not None and timeout >= 0) else None
         self.id = f'pid_{os.getpid()}-tid_{threading.get_ident()}-{uuid.uuid4().hex}'
         
-        self._init_db()
-        
     def _get_connection(self):
         """Creates a new database connection."""
         return sqlite3.connect(settings.SQLITE_PATH)
     
-    def _init_db(self):
-        with self._get_connection() as conn:
+    @staticmethod
+    def init():
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS locks (
                     node_key TEXT NOT NULL,
