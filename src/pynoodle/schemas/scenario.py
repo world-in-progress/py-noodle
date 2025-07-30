@@ -7,5 +7,4 @@ class ScenarioNodeDescription(BaseModel):
     dependencies: list[str] | None = None
 
 class ScenarioConfiguration(BaseModel):
-    scene_path: str
     scenario_nodes: list[ScenarioNodeDescription]

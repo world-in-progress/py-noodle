@@ -41,14 +41,10 @@ class Scenario:
             configuration_path = Path.cwd() / configuration_path
         with open(configuration_path, 'r') as f:
             config_data = yaml.safe_load(f)
+            
+        # Parse scenario graph
         config = ScenarioConfiguration(**config_data)
         
-        # Parse scene path
-        self.scene_path = Path(config.scene_path)
-        if not self.scene_path.is_absolute():
-            self.scene_path = Path.cwd() / self.scene_path
-        
-        # Parse scenario graph
         self.graph: dict[str, ScenarioNode] = {}
         
         # - Firstly, create all nodes

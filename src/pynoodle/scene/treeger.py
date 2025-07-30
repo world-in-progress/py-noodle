@@ -28,10 +28,9 @@ DEPENDENCY_TABLE = 'dependency'
 DEPENDENT_KEY = 'dependent_key'
 
 class Treeger:
-    def __init__(self, scenario: Scenario):
+    def __init__(self):
         # Get scenario graph
-        self.scenario = scenario
-        self.scene_path = self.scenario.scene_path
+        self.scenario = Scenario()
         
         # Init server URL
         port = settings.SERVER_PORT
@@ -43,11 +42,8 @@ class Treeger:
         self._init_scene()
             
     def _init_scene(self):
-        # Create database directory if it doesn't exist
-        self.scene_path.parent.mkdir(parents=True, exist_ok=True)
-        
         # Create the database file if it doesn't exist
-        with sqlite3.connect(self.scene_path) as conn:
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
             # Create the scene table
             conn.execute(f"""
                 CREATE TABLE IF NOT EXISTS {SCENE_TABLE} (
@@ -81,7 +77,7 @@ class Treeger:
     @contextmanager
     def _connect_db(self):
         """Context manager for database connection."""
-        conn = sqlite3.connect(self.scene_path)
+        conn = sqlite3.connect(settings.SQLITE_PATH)
         conn.row_factory = sqlite3.Row  # enable column access by name
         conn.execute('PRAGMA foreign_keys = ON;') # enable foreign key support
         try:
@@ -333,7 +329,7 @@ class Treeger:
             if self._is_node_dependency(current_key):
                 continue
             # If the node is active, skip it
-            if RWLock.is_node_active(self.scene_path, current_key):
+            if RWLock.is_node_active(current_key):
                 continue
             else:
                 nodes_to_delete.append(current_key)
@@ -390,8 +386,7 @@ class Treeger:
             raise ValueError(f'Node "{node_key}" is a resource set node, cannot get its service')
         
         return SceneNode(
-            icrm_class,
-            self.scene_path, node_record,
+            icrm_class, node_record,
             access_mode, timeout, retry_interval
         )
     

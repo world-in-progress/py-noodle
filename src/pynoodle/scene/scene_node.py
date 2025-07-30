@@ -4,11 +4,13 @@ import time
 import json
 import subprocess
 import c_two as cc
+from pathlib import Path
 from pydantic import BaseModel
 from dataclasses import dataclass, field
 from typing import TypeVar, Type, Generic, Literal
 
 from .lock import RWLock
+from ..config import settings
 from ..scenario import ScenarioNode
 from .server_template import CRM_LAUNCHER_IMPORT_TEMPLATE, CRM_LAUNCHER_RUNNING_TEMPLATE
 
@@ -48,12 +50,9 @@ class SceneNodeRecord:
 class SceneNode(Generic[T]):
     def __init__(
         self,
-        icrm_class: Type[T],
-        scene_path: str,
-        record: SceneNodeRecord,
+        icrm_class: Type[T], record: SceneNodeRecord,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
-        timeout: float | None = None,
-        retry_interval: float = 1.0
+        timeout: float | None = None, retry_interval: float = 1.0
     ):
         access_level = access_mode[0]
         lock_type = access_mode[1]
@@ -63,7 +62,6 @@ class SceneNode(Generic[T]):
         if access_level not in ['l', 'p']:
             raise ValueError("access level must be either 'l' for local or 'p' for process-level")
         
-        self.scene_path = scene_path
         self.node_key = record.node_key
         
         self._crm: T = None
@@ -71,7 +69,7 @@ class SceneNode(Generic[T]):
         self._crm_params = record.launch_params
         self._crm_class = record.scenario_node.crm_class
         self._crm_module = record.scenario_node.crm_module
-        self._lock = RWLock(scene_path, self.node_key, lock_type, timeout, retry_interval)
+        self.lock = RWLock(self.node_key, lock_type, timeout, retry_interval)
     
     @property
     def server_scheme(self) -> Literal['local', 'memory']:
@@ -90,13 +88,42 @@ class SceneNode(Generic[T]):
         elif self._access_level == 'p':
             scheme = 'memory://'
         return scheme + self.node_key.replace('.', '_')
+    
+    def launch_crm_server(self):
+        import_script = f'from {self._crm_module} import {self._crm_class.__name__} as CRM\n'
+        scripts = CRM_LAUNCHER_IMPORT_TEMPLATE + import_script + CRM_LAUNCHER_RUNNING_TEMPLATE
+        
+        # Try to launch a CRM server (Process-Level) related to the node
+        try:
+            # Platform-specific subprocess arguments
+            kwargs = {}
+            if sys.platform != 'win32':
+                # Unix-specific: create new process group
+                kwargs['preexec_fn'] = os.setsid
+            
+            cmd = [
+                sys.executable,
+                '-c',
+                scripts,
+                '--server_address', self.server_address,
+                '--node_key', self.node_key,
+                '--params', self._crm_params
+            ]
+        
+            subprocess.Popen(
+                cmd,
+                **kwargs,
+            )
+        
+        except Exception as e:
+            raise RuntimeError(f'Failed to launch CRM server for node "{self.node_key}": {e}')
         
     @property
     def crm(self) -> T:
         if self._crm is not None:
             return self._crm
         
-        self._lock.acquire()
+        self.lock.acquire()
         
         if self._access_level == 'l':
             params = json.loads(self._crm_params) if self._crm_params else {}
@@ -104,48 +131,21 @@ class SceneNode(Generic[T]):
             return self._crm
         
         elif self._access_level == 'p':
-            # if not RWLock.is_node_active(self.scene_path, self.node_key):
-            import_script = f'from {self._crm_module} import {self._crm_class.__name__} as CRM\n'
-            scripts = CRM_LAUNCHER_IMPORT_TEMPLATE + import_script + CRM_LAUNCHER_RUNNING_TEMPLATE
+            self.launch_crm_server()
             
-            # Try to launch a CRM server (Process-Level) related to the node
-            try:
-                # Platform-specific subprocess arguments
-                kwargs = {}
-                if sys.platform != 'win32':
-                    # Unix-specific: create new process group
-                    kwargs['preexec_fn'] = os.setsid
-                
-                cmd = [
-                    sys.executable,
-                    '-c',
-                    scripts,
-                    '--server_address', self.server_address,
-                    '--node_key', self.node_key,
-                    '--params', self._crm_params
-                ]
+            # Spining up the CRM server, wait for it to be ready
+            count = 0
+            while cc.rpc.Client.ping(self.server_address, 0.5) is False:
+                if count >= 120: # 60 seconds timeout
+                    raise TimeoutError(f'CRM server "{self.node_key}" did not start in time')
+                time.sleep(0.5)
+                count += 1
             
-                subprocess.Popen(
-                    cmd,
-                    **kwargs,
-                )
-                
-                # Create an ICRM instance related to the node CRM
-                address = self.server_address
-                self._crm = self._crm_class.__base__()
-                
-                # Spining up the CRM server, wait for it to be ready
-                count = 0
-                while cc.rpc.Client.ping(address, 0.5) is False:
-                    if count >= 120: # 60 seconds timeout
-                        raise TimeoutError(f'CRM server "{self.node_key}" did not start in time')
-                    time.sleep(0.5)
-                    count += 1
+            # Create an ICRM instance related to the node CRM
+            self._crm = self._crm_class.__base__()
             
-            except Exception as e:
-                raise RuntimeError(f'Failed to launch CRM server for node "{self.node_key}": {e}')
-                
-            client = cc.rpc.Client(address) # add a C-Two RPC client
+            # Add a C-Two RPC client
+            client = cc.rpc.Client(self.server_address)
             self._crm.client = client
             return self._crm
     
@@ -159,4 +159,4 @@ class SceneNode(Generic[T]):
             self._crm.client.shutdown(self.server_address)
             
         # Release the lock
-        self._lock.release()
+        self.lock.release()

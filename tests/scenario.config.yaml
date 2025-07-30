@@ -1,4 +1,3 @@
-scene_path: ./tests/scene.db
 scenario_nodes:
   - name: test/names
     crm_name: Names
