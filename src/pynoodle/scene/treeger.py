@@ -121,6 +121,27 @@ class Treeger:
             # Delete node from the scene table
             conn.execute(f'DELETE FROM {SCENE_TABLE} WHERE {NODE_KEY} = ?', (node_key,))
             
+            # Find all remote nodes that this node depends on
+            cursor = conn.execute(f'SELECT {NODE_KEY} FROM {DEPENDENCY_TABLE} WHERE {DEPENDENT_KEY} = ?', (node_key,))
+            keys = [row[NODE_KEY] for row in cursor.fetchall()]
+            for key in keys:
+                is_remote = key.startswith('http')
+                if not is_remote:
+                    continue
+
+                # Remove the dependency from the remote Noodle
+                server_url, remote_key = key.split('::')
+                req = DependencyRequest(
+                    method='REMOVE',
+                    node_key=remote_key,
+                    dependent_key=node_key,
+                    dependent_url=self.url,
+                )
+                response = requests.post(f'{server_url}/noodle/dependencies/', json=req.model_dump())
+                if response.status_code != 200:
+                    logger.error(f'Failed to remove dependency from remote Noodle: {response.text}')
+                    raise requests.RequestException(f'Failed to remove dependency: {response.text}')
+
             # Delete dependencies from the dependency table
             conn.execute(f'DELETE FROM {DEPENDENCY_TABLE} WHERE {NODE_KEY} = ?', (node_key,))
             conn.commit()
@@ -229,7 +250,7 @@ class Treeger:
         )
         response = requests.post(f'{server_url}/noodle/dependencies/', json=req.model_dump())
         if response.status_code != 200:
-            logger.error(f'Failed to add dependency to remote noodle: {response.text}')
+            logger.error(f'Failed to add dependency to remote Noodle: {response.text}')
             raise requests.RequestException(f'Failed to add dependency: {response.text}')
 
     def mount_node(
@@ -262,15 +283,15 @@ class Treeger:
             
             for dep_key in dependent_node_keys_or_infos:
                 if dep_key.startswith('http'):
-                    # If the dependency is a remote node, check if it exists in the remote noodle
+                    # If the dependency is a remote node, check if it exists in the remote Noodle
                     try:
-                        # Fetch the node info from the remote noodle
+                        # Fetch the node info from the remote Noodle
                         access_url, dep_key = dep_key.split('::')
                         response = requests.get(f'{access_url}/noodle/scene/', params={'node_key': dep_key})
                         
                         # Check if the response is successful
                         if response.status_code != 200:
-                            raise ValueError(f'Dependency node {dep_key} not found in remote noodle {access_url}')
+                            raise ValueError(f'Dependency node {dep_key} not found in remote Noodle {access_url}')
                         
                         # Parse the response to get the node info
                         dep_node_info = SceneNodeInfo.model_validate(response.json())
@@ -281,7 +302,7 @@ class Treeger:
 
                         # If the dependency node has no scenario node name (a resource-set node), raise an error
                         if dep_node_info.scenario_node_name is None:
-                            raise ValueError(f'Dependency node {dep_key} has no scenario node name in remote noodle {access_url}')
+                            raise ValueError(f'Dependency node {dep_key} has no scenario node name in remote Noodle {access_url}')
                         
                         dep_map[dep_node_info.scenario_node_name] = True
                         
@@ -294,11 +315,11 @@ class Treeger:
                         )
                         response = requests.post(f'{access_url}/noodle/dependencies/', json=req.model_dump())
                         if response.status_code != 200:
-                            logger.error(f'Failed to add dependency to remote noodle: {response.text}')
+                            logger.error(f'Failed to add dependency to remote Noodle: {response.text}')
                             raise requests.RequestException(f'Failed to add dependency: {response.text}')
                         
                     except requests.RequestException as e:
-                        raise ValueError(f'Failed to fetch dependency node {dep_key} from remote noodle {access_url}: {e}')
+                        raise ValueError(f'Failed to fetch dependency node {dep_key} from remote Noodle {access_url}: {e}')
                 else:
                     # If the dependency is a node key, check if it exists in the scene
                     if not self._has_node(dep_key):
@@ -367,7 +388,7 @@ class Treeger:
         node_record = self._load_node(node_key, is_cascade=False)
         if node_record.access_info is not None:
             # If the node has an access URL, it is a remote node
-            # The dependency needs to be removed from the remote noodle
+            # The dependency needs to be removed from the remote Noodle
             server_url, remote_node_key = node_record.access_info.split('::')
             req = DependencyRequest(
                 method='REMOVE',
@@ -377,7 +398,7 @@ class Treeger:
             )
             response = requests.post(f'{server_url}/noodle/dependencies/', json=req.model_dump())
             if response.status_code != 200:
-                logger.error(f'Failed to remove dependency from remote noodle: {response.text}')
+                logger.error(f'Failed to remove dependency from remote Noodle: {response.text}')
                 raise requests.RequestException(f'Failed to remove dependency: {response.text}')
         else:
             # If the node is a local node

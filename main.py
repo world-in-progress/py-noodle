@@ -31,7 +31,7 @@ if __name__ == '__main__':
         # print(hello.crm.greet(2))
     
     # nood.unmount_node('root.names')
-    # nood.unmount_node('root.hello')
+    nood.unmount_node('root.hello')
     # nood.unmount_node('root.names')
         
     # hello = nood.get_node(IHello, 'hello', True, 'p')
