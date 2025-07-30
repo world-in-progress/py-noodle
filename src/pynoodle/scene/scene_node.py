@@ -2,16 +2,16 @@ import os
 import sys
 import time
 import json
+import requests
 import subprocess
 import c_two as cc
-from pathlib import Path
 from pydantic import BaseModel
 from dataclasses import dataclass, field
 from typing import TypeVar, Type, Generic, Literal
 
 from .lock import RWLock
-from ..config import settings
 from ..scenario import ScenarioNode
+from ..schemas.lock import LockInfo
 from .server_template import CRM_LAUNCHER_IMPORT_TEMPLATE, CRM_LAUNCHER_RUNNING_TEMPLATE
 
 T = TypeVar('T')
@@ -47,10 +47,62 @@ class SceneNodeRecord:
     def is_set(self):
         return self.scenario_node is None
 
+class SceneNodeProxy(Generic[T]):
+    def __init__(
+        self,
+        icrm_class: Type[T], access_info: str,
+        access_mode: Literal['lr', 'lw', 'pr', 'pw'],
+        timeout: float | None = None, retry_interval: float = 1.0
+    ):
+        remote_url, remote_key = access_info.split('::')
+        self._icrm_class = icrm_class
+        self._remote_url = remote_url
+        self._remote_key = remote_key
+        self._remote_lock_id: str | None = None
+        self._access_level = access_mode[0]
+        self._timeout = timeout
+        self._retry_interval = retry_interval
+        self._crm: T = None
+    
+    @property
+    def crm(self) -> T:
+        if self._crm is not None:
+            return self._crm
+        
+        # Get the remote lock from the remote Noodle
+        # Refer to activate_node() in src/pynoodle/endpoints/proxy.py for more details about the lock API
+        lock_api = f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}&lock_type={self._access_level}' \
+                 + f'&timeout={self._timeout}' if self._timeout is not None else '' \
+                 + f'&retry_interval={self._retry_interval}'
+        response = requests.get(lock_api)
+        if response.status_code != 200:
+            raise RuntimeError(f'Failed to acquire lock for remote CRM server: {response.text}')
+        self._remote_lock_id = LockInfo(**response.json()).lock_id
+        
+        # Create an ICRM instance related to the remote node CRM
+        # Refer to proxy_node() in src/pynoodle/endpoints/proxy.py for more details about the proxy API
+        proxy_api = f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}'  # can add &timeout=[-1.0 | <timeout>] if needed
+        self._crm = self._icrm_class()
+        
+        # Add a C-Two RPC client
+        client = cc.rpc.Client(proxy_api)
+        self._crm.client = client
+        return self._crm
+    
+    def terminate(self):
+        # Refer to deactivate_node() in src/pynoodle/endpoints/proxy.py for more details about the deactivate API
+        deactivate_api = f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}&lock_id={self._remote_lock_id}'
+        response = requests.delete(deactivate_api)
+        if response.status_code != 200:
+            raise RuntimeError(f'Failed to deactivate remote CRM server: {response.text}')
+        self.lock.release()
+        return
+        
+
 class SceneNode(Generic[T]):
     def __init__(
         self,
-        icrm_class: Type[T], record: SceneNodeRecord,
+        icrm_class: Type[T], record: SceneNodeRecord,   # icrm_class only used for type hinting
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None, retry_interval: float = 1.0
     ):
@@ -63,6 +115,14 @@ class SceneNode(Generic[T]):
             raise ValueError("access level must be either 'l' for local or 'p' for process-level")
         
         self.node_key = record.node_key
+        self._remote_url: str | None = None
+        self._remote_key: str | None = None
+        self._remote_lock_id: str | None = None
+        
+        # If this node has a remote URL and key
+        # It has remote access information
+        if record.access_info:
+            self._remote_url, self._remote_key = record.access_info.split('::')
         
         self._crm: T = None
         self._access_level = access_level
@@ -125,6 +185,28 @@ class SceneNode(Generic[T]):
         
         self.lock.acquire()
         
+        is_proxy = self._remote_url is not None and self._remote_key is not None
+        if is_proxy:
+            # Get the twin lock from the remote Noodle
+            # Refer to activate_node() in src/pynoodle/endpoints/proxy.py for more details about the lock API
+            lock_api = f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}&lock_type={self._access_level}' \
+                     + f'&timeout={self.lock.timeout}' if self.lock.timeout is not None else '' \
+                     + f'&retry_interval={self.lock.retry_interval}'
+            response = requests.get(lock_api)
+            if response.status_code != 200:
+                raise RuntimeError(f'Failed to acquire lock for remote CRM server: {response.text}')
+            self._remote_lock_id = LockInfo(**response.json()).lock_id
+            
+            # Create an ICRM instance related to the remote node CRM
+            # Refer to proxy_node() in src/pynoodle/endpoints/proxy.py for more details about the proxy API
+            proxy_api = f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}'  # can add &timeout=[-1.0 | <timeout>] if needed
+            self._crm = self._crm_class.__base__()
+            
+            # Add a C-Two RPC client
+            client = cc.rpc.Client(proxy_api)
+            self._crm.client = client
+            return self._crm
+
         if self._access_level == 'l':
             params = json.loads(self._crm_params) if self._crm_params else {}
             self._crm = self._crm_class(**params)
@@ -150,13 +232,24 @@ class SceneNode(Generic[T]):
             return self._crm
     
     def terminate(self):
+        # For Proxy CRM, terminate it remotely
+        is_proxy = self._remote_url is not None and self._remote_key is not None
+        if is_proxy:
+            # Refer to deactivate_node() in src/pynoodle/endpoints/proxy.py for more details about the deactivate API
+            deactivate_api = f'{self._remote_url}/noodle/proxy?node_key={self._remote_key}&lock_id={self._remote_lock_id}'
+            response = requests.delete(deactivate_api)
+            if response.status_code != 200:
+                raise RuntimeError(f'Failed to deactivate remote CRM server: {response.text}')
+            self.lock.release()
+            return
+        
         # For Local-level CRM, terminate it manually
         if self._access_level == 'l':
             self._crm.terminate()
         
         # For Process-level CRM, just shutdown the C-Two client
         elif self._access_level == 'p':
-            self._crm.client.shutdown(self.server_address)
+            self._crm.client.shutdown(self.server_address, -1.0)
             
         # Release the lock
         self.lock.release()

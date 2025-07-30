@@ -10,8 +10,8 @@ from .lock import RWLock
 from ..config import settings
 from ..scenario import Scenario
 from ..schemas.scene import SceneNodeInfo
-from .scene_node import SceneNode, SceneNodeRecord
 from ..schemas.dependencies import DependencyRequest
+from .scene_node import SceneNode, SceneNodeProxy, SceneNodeRecord
 
 T = TypeVar('T')
 logger = logging.getLogger(__name__)
@@ -378,17 +378,23 @@ class Treeger:
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None,
         retry_interval: float = 1.0
-    ) -> SceneNode[T]:
+    ) -> SceneNode[T] | SceneNodeProxy[T]:
         node_record = self._load_node(node_key, is_cascade=False)
         if node_record is None:
             raise ValueError(f'Node "{node_key}" not found in scene tree')
         if node_record.scenario_node is None:
             raise ValueError(f'Node "{node_key}" is a resource set node, cannot get its service')
         
-        return SceneNode(
-            icrm_class, node_record,
-            access_mode, timeout, retry_interval
-        )
+        if node_record.access_info is None:
+            return SceneNode(
+                icrm_class, node_record,
+                access_mode, timeout, retry_interval
+            )
+        else:
+            return SceneNodeProxy(
+                icrm_class, node_record.access_info,
+                access_mode, timeout, retry_interval
+            )
     
     @contextmanager
     def connect_node(
@@ -398,7 +404,7 @@ class Treeger:
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None,
         retry_interval: float = 1.0
-    ) -> Generator[SceneNode[T], None, None]:
+    ) -> Generator[SceneNode[T] | SceneNodeProxy[T], None, None]:
         """Context manager to connect to a node"""
         node = self.get_node(icrm_class, node_key, access_mode, timeout, retry_interval)
         try:

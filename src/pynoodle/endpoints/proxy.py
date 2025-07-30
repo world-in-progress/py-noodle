@@ -2,7 +2,7 @@ import asyncio
 import logging
 import c_two as cc
 from typing import Literal
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body, Response
 
 from ..noodle import Noodle
 from ..scene.lock import RWLock
@@ -40,15 +40,37 @@ async def activate_node(node_key: str, lock_type: Literal['r', 'w'], timeout: fl
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Error activating node {node_key}: {e}')
 
+@router.post('/')
+async def proxy_node(node_key: str, timeout: float | None = None, body: bytes=Body(..., description='C-Two Event Message in Bytes')):
+    """
+    Proxies a C-Two event message to the specified node.
+    """
+    try:
+        # Check if the node exists
+        if not Noodle.has_node(node_key):
+            raise HTTPException(status_code=404, detail=f'Node {node_key} not found')
+        
+        # Relay the message to the node's CRM server asynchronously
+        timeout = timeout if timeout is not None else -1.0
+        res = await cc.rpc.routing(Noodle.node_server_address(node_key, 'p'), body, timeout)
+        return Response(res, media_type='application/octet-stream')
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'Error proxying node {node_key}: {e}')
+
 @router.delete('/')
 def deactivate_node(node_key: str, lock_id: str):
     """
     Deactivates a node in the Noodle system.
     """
     try:
-        # Release a local lock (as write lock)
+        # Shutdown the node's CRM server
+        cc.rpc.Client.shutdown(Noodle.node_server_address(node_key, 'p'), -1.0)
+        
+        # Release a local lock (mock as a write lock)
         lock = RWLock(node_key, 'w')
         lock.id = lock_id
         lock.release()
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Error deactivating node {node_key}: {e}')
