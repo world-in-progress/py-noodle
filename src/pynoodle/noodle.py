@@ -11,15 +11,13 @@ class Noodle(Treeger):
     def __init__(self):
         super().__init__()
     
-    @staticmethod
-    def has_node(node_key: str) -> bool:
+    def has_node(self, node_key: str) -> bool:
         """Check if a node exists in the scene database."""
         with sqlite3.connect(settings.SQLITE_PATH) as conn:
             cursor = conn.execute(f'SELECT 1 FROM {SCENE_TABLE} WHERE {NODE_KEY} = ?', (node_key,))
             return cursor.fetchone() is not None
     
-    @staticmethod
-    def node_server_address(node_key: str, access_level: Literal['l', 'p']) -> str:
+    def node_server_address(self, node_key: str, access_level: Literal['l', 'p']) -> str:
         """Get the server address for a node based on its access level."""
         scheme = ''
         if access_level == 'l':

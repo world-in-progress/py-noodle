@@ -46,12 +46,12 @@ async def proxy_node(node_key: str, timeout: float | None = None, body: bytes=Bo
     """
     try:
         # Check if the node exists
-        if not Noodle.has_node(node_key):
+        if not noodle.has_node(node_key):
             raise HTTPException(status_code=404, detail=f'Node {node_key} not found')
         
         # Relay the message to the node's CRM server asynchronously
         timeout = timeout if timeout is not None else -1.0
-        res = await cc.rpc.routing(Noodle.node_server_address(node_key, 'p'), body, timeout)
+        res = await cc.rpc.routing(noodle.node_server_address(node_key, 'p'), body, timeout)
         return Response(res, media_type='application/octet-stream')
     
     except Exception as e:
@@ -64,7 +64,7 @@ def deactivate_node(node_key: str, lock_id: str):
     """
     try:
         # Shutdown the node's CRM server
-        cc.rpc.Client.shutdown(Noodle.node_server_address(node_key, 'p'), -1.0)
+        cc.rpc.Client.shutdown(noodle.node_server_address(node_key, 'p'), -1.0)
         
         # Release a local lock (mock as a write lock)
         lock = RWLock(node_key, 'w')
