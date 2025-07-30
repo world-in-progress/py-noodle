@@ -27,3 +27,5 @@ class Noodle(Treeger):
         elif access_level == 'p':
             scheme = 'memory://'
         return scheme + node_key.replace('.', '_')
+
+noodle = Noodle()

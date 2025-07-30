@@ -4,7 +4,7 @@ import c_two as cc
 from typing import Literal
 from fastapi import APIRouter, HTTPException, Body, Response
 
-from ..noodle import Noodle
+from ..noodle import noodle
 from ..scene.lock import RWLock
 from ..schemas.lock import LockInfo
 
@@ -18,7 +18,6 @@ async def activate_node(node_key: str, lock_type: Literal['r', 'w'], timeout: fl
     """
     try:
         # Get the node (mock icrm_class as bool)
-        noodle = Noodle()
         node = noodle.get_node(bool, node_key, 'p' + lock_type, timeout, retry_interval)
 
         # Acquire the lock for the node asynchronously

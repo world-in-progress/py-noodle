@@ -1,7 +1,8 @@
 import yaml
 import logging
+import threading
 from pathlib import Path
-from typing import TypeVar
+from typing import TypeVar, Type
 from dataclasses import dataclass
 
 from ..config import settings
@@ -13,25 +14,32 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ScenarioNode:
     name: str
-    crm_class: T
+    crm_name: str
     crm_module: str
     dependencies: list['ScenarioNode']
+    
+    _crm_class: Type[T] = None
+    _lock: threading.Lock = threading.Lock()
     
     @property
     def namespace(self) -> str:
         return self.name.split('/')[0]
     
     @property
-    def crm_name(self) -> str:
-        return self.crm_class.__name__
+    def crm_class(self) -> Type[T]:
+        with self._lock:
+            if self._crm_class is None:
+                module = __import__(self.crm_module, fromlist=[''])
+                self._crm_class = getattr(module, self.crm_name)
+            return self._crm_class
     
     @property
     def icrm_name(self) -> str:
-        return self.crm_class.__base__.__name__
+        return self._crm_class.__base__.__name__
     
     @property
-    def icrm_class(self) -> T:
-        return self.crm_class.__base__
+    def icrm_class(self) -> Type[T]:
+        return self._crm_class.__base__
 
 class Scenario:
     def __init__(self):
@@ -49,11 +57,9 @@ class Scenario:
         
         # - Firstly, create all nodes
         for node_description in config.scenario_nodes:
-            module = __import__(node_description.crm_module, fromlist=[''])
-            crm_class = getattr(module, node_description.crm_name)
             node = ScenarioNode(
                 name=node_description.name,
-                crm_class=crm_class,
+                crm_name=node_description.crm_name,
                 crm_module=node_description.crm_module,
                 dependencies=[]
             )
@@ -72,3 +78,5 @@ class Scenario:
         if scenario_node_name not in self.graph:
             return None
         return self.graph[scenario_node_name]
+
+scenario_graph = Scenario()

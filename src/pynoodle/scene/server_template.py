@@ -1,4 +1,5 @@
 CRM_LAUNCHER_IMPORT_TEMPLATE = """
+import json
 import logging
 import argparse
 import c_two as cc

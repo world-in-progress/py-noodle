@@ -47,7 +47,7 @@ class SceneNodeRecord:
     def is_set(self):
         return self.scenario_node is None
 
-class SceneNodeProxy(Generic[T]):
+class RemoteSceneNode(Generic[T]):
     def __init__(
         self,
         icrm_class: Type[T], access_info: str,

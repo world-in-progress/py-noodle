@@ -1,7 +1,5 @@
-import yaml
 import shutil
 import logging
-from pathlib import Path
 from fastapi import FastAPI
 
 from .config import settings
@@ -9,8 +7,7 @@ from .endpoints import router
 
 logger = logging.getLogger(__name__)
 
-from .scene import Treeger, RWLock
-from .schemas.scenario import ScenarioConfiguration
+from .scene import RWLock
 
 def NOODLE_INIT(app: FastAPI | None = None) -> None:
         # Pre-remove all locks if configured
@@ -29,4 +26,4 @@ def NOODLE_INIT(app: FastAPI | None = None) -> None:
         if app is not None:
             app.include_router(router, prefix='/noodle', tags=['noodle'])
         else:
-            logger.warning('No FastAPI app provided, Noodle endpoints will not be registered.')
+            logger.debug('No FastAPI app provided, Noodle endpoints will not be registered.')

@@ -8,10 +8,10 @@ from typing import TypeVar, Literal, Type, Generator
 
 from .lock import RWLock
 from ..config import settings
-from ..scenario import Scenario
+from ..scenario import scenario_graph
 from ..schemas.scene import SceneNodeInfo
 from ..schemas.dependencies import DependencyRequest
-from .scene_node import SceneNode, SceneNodeProxy, SceneNodeRecord
+from .scene_node import SceneNode, RemoteSceneNode, SceneNodeRecord
 
 T = TypeVar('T')
 logger = logging.getLogger(__name__)
@@ -30,8 +30,8 @@ DEPENDENT_KEY = 'dependent_key'
 class Treeger:
     def __init__(self):
         # Get scenario graph
-        self.scenario = Scenario()
-        
+        self.scenario = scenario_graph
+
         # Init server URL
         port = settings.SERVER_PORT
         hostname = socket.gethostname()
@@ -245,6 +245,9 @@ class Treeger:
                 INSERT INTO {SCENE_TABLE} ({NODE_KEY}, {PARENT_KEY}, {SCENARIO_NODE_NAME}, {ACCESS_INFO}) VALUES (?, ?, ?, ?)
             """, (node_key, parent_key, scenario_node_name, access_info))
             conn.commit()
+        
+        # Add dependency relation to the local Noodle
+        self.add_dependency(access_info, node_key)
 
         # Add dependency relation to the remote Noodle
         req = DependencyRequest(
@@ -419,10 +422,10 @@ class Treeger:
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None,
         retry_interval: float = 1.0
-    ) -> SceneNode[T] | SceneNodeProxy[T]:
+    ) -> SceneNode[T] | RemoteSceneNode[T]:
         is_remote = node_key.startswith('http')
         if is_remote:
-            return SceneNodeProxy(
+            return RemoteSceneNode(
                 icrm_class, node_key,
                 access_mode, timeout, retry_interval
             )
@@ -446,7 +449,7 @@ class Treeger:
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None,
         retry_interval: float = 1.0
-    ) -> Generator[SceneNode[T] | SceneNodeProxy[T], None, None]:
+    ) -> Generator[SceneNode[T] | RemoteSceneNode[T], None, None]:
         """Context manager to connect to a node"""
         node = self.get_node(icrm_class, node_key, access_mode, timeout, retry_interval)
         try:

@@ -1,1 +1,1 @@
-from .scenario import Scenario, ScenarioNode
+from .scenario import Scenario, ScenarioNode, scenario_graph
