@@ -413,7 +413,7 @@ class Treeger:
                     node_stack.extend(child_keys)
             
             if len(nodes_to_delete) != nodes_count:
-                message = f'Failed to unmount node "{node_key}": it is depended by {nodes_count - len(nodes_to_delete)} node(s). Remove dependencies first, then retry unmounting.'
+                message = f'Unable to unmount node "{node_key}": it is depended by {nodes_count - len(nodes_to_delete)} node(s). Remove dependencies first, then retry unmounting.'
                 raise ValueError(message)
 
             # If the node has access information, it is a proxy of a remote node

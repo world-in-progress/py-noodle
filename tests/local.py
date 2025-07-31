@@ -23,7 +23,7 @@ if __name__ == '__main__':
     noodle.mount_node('root.names', 'test/names')
     
     # Proxy remote nodes http://127.0.0.1:8000::names as root.names
-    # noodle.proxy_node('root.names', 'test/names', 'http://127.0.0.1:8000', 'names')
+    noodle.proxy_node('root.names', 'test/names', 'http://127.0.0.1:8000', 'names')
     
     # Mount local nodes: root.hello, dependent on remote node http://127.0.0.1:8000::names
     # noodle.mount_node('root.hello', 'test/hello', launch_params={'names_node_key': 'http://127.0.0.1:8000::names'}, dependent_node_keys_or_infos=['http://127.0.0.1:8000::names'])
