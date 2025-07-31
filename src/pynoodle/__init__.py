@@ -1,7 +1,3 @@
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from .scene import SceneNode
 from .init import NOODLE_INIT
 from .noodle import Noodle, noodle

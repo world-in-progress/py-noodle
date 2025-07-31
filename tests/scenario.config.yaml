@@ -1,7 +1,7 @@
 scenario_nodes:
   - name: test/names
-    crm_name: INames
-    crm_module: tests.icrms.inames
+    crm_name: Names
+    crm_module: tests.crms.names
   - name: test/hello
     crm_name: Hello
     crm_module: tests.crms.hello

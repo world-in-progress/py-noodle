@@ -241,48 +241,55 @@ class Treeger:
         self,
         node_key: str, scenario_node_name: str,
         server_url: str, remote_node_key: str
-    ) -> None:
+    ) -> tuple[bool, str]:
         # Check if node already exists in db
         if (self._has_node(node_key)):
             logger.debug(f'Node {node_key} already exists, skipping')
-            return
-        
-        parent_key = '.'.join(node_key.split('.')[:-1])
-        access_info = f'{server_url}::{remote_node_key}'
-        with self._connect_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute(f"""
-                INSERT INTO {SCENE_TABLE} ({NODE_KEY}, {PARENT_KEY}, {SCENARIO_NODE_NAME}, {ACCESS_INFO}) VALUES (?, ?, ?, ?)
-            """, (node_key, parent_key, scenario_node_name, access_info))
-            conn.commit()
-        
-        # Add dependency relation to the local Noodle
-        self.add_dependency(access_info, node_key)
+            return True, ''
 
-        # Add dependency relation to the remote Noodle
-        req = DependencyRequest(
-            method='ADD',
-            node_key=remote_node_key,
-            dependent_key=node_key,
-            dependent_url=self.url,
-        )
-        response = requests.post(f'{server_url}/noodle/dependencies/', json=req.model_dump())
-        if response.status_code != 200:
-            logger.error(f'Failed to add dependency to remote Noodle: {response.text}')
-            raise requests.RequestException(f'Failed to add dependency: {response.text}')
+        try:
+            # Add node to the scene
+            parent_key = '.'.join(node_key.split('.')[:-1])
+            access_info = f'{server_url}::{remote_node_key}'
+            with self._connect_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"""
+                    INSERT INTO {SCENE_TABLE} ({NODE_KEY}, {PARENT_KEY}, {SCENARIO_NODE_NAME}, {ACCESS_INFO}) VALUES (?, ?, ?, ?)
+                """, (node_key, parent_key, scenario_node_name, access_info))
+                conn.commit()
+            
+            # Add dependency relation to the local Noodle
+            self.add_dependency(access_info, node_key)
 
-        logger.info(f'Successfully proxy node "{node_key}" with scenario "{scenario_node_name}"')
+            # Add dependency relation to the remote Noodle
+            req = DependencyRequest(
+                method='ADD',
+                node_key=remote_node_key,
+                dependent_key=node_key,
+                dependent_url=self.url,
+            )
+            response = requests.post(f'{server_url}/noodle/dependencies/', json=req.model_dump())
+            if response.status_code != 200:
+                logger.error(f'Failed to add dependency to remote Noodle: {response.text}')
+                raise requests.RequestException(f'Failed to add dependency: {response.text}')
+
+            logger.info(f'Successfully proxy node "{node_key}" with scenario "{scenario_node_name}"')
+            return True, ''
+        
+        except Exception as e:
+            logger.error(f'Failed to proxy node "{node_key}" with scenario "{scenario_node_name}": {e}')
+            return False, str(e)
 
     def mount_node(
         self,
         node_key: str, scenario_node_name: str = '',
         launch_params: any = None, dependent_node_keys_or_infos: list[str] = []
-    ) -> None:
+    ) -> tuple[bool, str]:
         # Check if node already exists in db
         if (self._has_node(node_key)):
             logger.debug(f'Node {node_key} already mounted, skipping')
-            return
-        
+            return True, ''
+
         # Validate resource SET node
         # If scenario_node_name is not provided
         # Meaning this is a resource set node (no launch params), not a resource node (with launch params or not)
@@ -290,178 +297,192 @@ class Treeger:
         if not scenario_node_name and launch_params:
             logger.warning(f'Launch parameters are provided for resource set node "{node_key}", ignoring them')
 
-        # Validate resource node
-        if scenario_node_name:
-            scenario_node = self.scenario[scenario_node_name]
-            
-            # - Check if the scenario node exists
-            if scenario_node is None:
-                raise ValueError(f'Scenario node {scenario_node_name} not found in scenario graph')
-            
-            # - Check if dependencies are valid
-            dep_map: dict[str, bool] = {dep.name: False for dep in scenario_node.dependencies}
-            
-            # -- Check if all dependencies are provided
-            if len(dependent_node_keys_or_infos) != len(dep_map):
-                raise ValueError(f'Node {scenario_node_name} has {len(scenario_node.dependencies)} dependencies, but {len(dependent_node_keys_or_infos)} provided')
-            
-            # -- Check if all provided dependencies match the scenario node dependencies
-            for dep_key in dependent_node_keys_or_infos:
-                # --- Check dependency from a remote node
-                if dep_key.startswith('http'):
-                    # ---- Check if it exists in the remote Noodle
-                    dep_node_info: SceneNodeInfo | None = None
-                    try:
-                        # Fetch the node info from the remote Noodle
-                        access_url, dep_key = dep_key.split('::')
-                        response = requests.get(f'{access_url}/noodle/scene/', params={'node_key': dep_key})
-                        
-                        # Check if the response is successful
-                        if response.status_code != 200:
-                            raise ValueError(f'Dependency node {dep_key} not found in remote Noodle {access_url}')
-                        
-                        # Parse the response to get the node info
-                        dep_node_info = SceneNodeInfo.model_validate(response.json())
-                        
-                    except Exception as e:
-                        raise ValueError(f'Failed to fetch dependency node {dep_key} from remote Noodle {access_url}: {e}')
-                        
-                    # ---- Check if the dependency node has a scenario node name
-                    if dep_node_info.scenario_node_name is None:
-                        raise ValueError(f'Dependency node {dep_key} in remote Noodle {access_url} is a resource set node, not a resource node')
-                    
-                    # ---- Check if the dependency node's scenario node exists in the local scenario graph
-                    # TODO: This validation is fragile and may not work in all cases
-                    #       As it assumes the remote Noodle has the same scenario graph as the local Noodle.
-                    #       Consider adding a more robust validation mechanism.
-                    if dep_node_info.scenario_node_name not in dep_map:
-                        raise ValueError(f'Dependency node {dep_node_info.scenario_node_name} not found in local scenario graph for node {scenario_node_name}')
-
-                    # ---- Mark the dependency as exists
-                    dep_map[dep_node_info.scenario_node_name] = True
-                    
-                # --- Check dependency from a local node
-                else:
-                    # ---- Check if it exists in the scene
-                    if not self._has_node(dep_key):
-                        raise ValueError(f'Dependency node {dep_key} not found in scene for node {node_key}')
-                    
-                    # ---- Check if it has a scenario node
-                    dep_node_record = self._load_node_record(dep_key, is_cascade=False)
-                    if dep_node_record.scenario_node is None:
-                        raise ValueError(f'Dependency node {dep_key} is a resource set node, not a resource node')
-                    
-                    dep_map[dep_node_record.scenario_node.name] = True
+        try:
+            # Validate resource node
+            if scenario_node_name:
+                scenario_node = self.scenario[scenario_node_name]
                 
-            if not all(dep_map.values()):
-                missing_deps = [name for name, exists in dep_map.items() if not exists]
-                raise ValueError(f'Missing dependencies for node {scenario_node_name}: {", ".join(missing_deps)}')
-        
-        # Validate parent key
-        parent_key = '.'.join(node_key.split('.')[:-1])
-        if parent_key and not self._has_node(parent_key):
-            raise ValueError(f'Parent node "{parent_key}" not found in scene for node "{node_key}"')
+                # - Check if the scenario node exists
+                if scenario_node is None:
+                    raise ValueError(f'Scenario node {scenario_node_name} not found in scenario graph')
+                
+                # - Check if dependencies are valid
+                dep_map: dict[str, bool] = {dep.name: False for dep in scenario_node.dependencies}
+                
+                # -- Check if all dependencies are provided
+                if len(dependent_node_keys_or_infos) != len(dep_map):
+                    raise ValueError(f'Node {scenario_node_name} has {len(scenario_node.dependencies)} dependencies, but {len(dependent_node_keys_or_infos)} provided')
+                
+                # -- Check if all provided dependencies match the scenario node dependencies
+                for dep_key in dependent_node_keys_or_infos:
+                    # --- Check dependency from a remote node
+                    if dep_key.startswith('http'):
+                        # ---- Check if it exists in the remote Noodle
+                        dep_node_info: SceneNodeInfo | None = None
+                        try:
+                            # Fetch the node info from the remote Noodle
+                            access_url, dep_key = dep_key.split('::')
+                            response = requests.get(f'{access_url}/noodle/scene/', params={'node_key': dep_key})
+                            
+                            # Check if the response is successful
+                            if response.status_code != 200:
+                                raise ValueError(f'Dependency node {dep_key} not found in remote Noodle {access_url}')
+                            
+                            # Parse the response to get the node info
+                            dep_node_info = SceneNodeInfo.model_validate(response.json())
+                            
+                        except Exception as e:
+                            raise ValueError(f'Failed to fetch dependency node {dep_key} from remote Noodle {access_url}: {e}')
+                            
+                        # ---- Check if the dependency node has a scenario node name
+                        if dep_node_info.scenario_node_name is None:
+                            raise ValueError(f'Dependency node {dep_key} in remote Noodle {access_url} is a resource set node, not a resource node')
+                        
+                        # ---- Check if the dependency node's scenario node exists in the local scenario graph
+                        # TODO: This validation is fragile and may not work in all cases
+                        #       As it assumes the remote Noodle has the same scenario graph as the local Noodle.
+                        #       Consider adding a more robust validation mechanism.
+                        if dep_node_info.scenario_node_name not in dep_map:
+                            raise ValueError(f'Dependency node {dep_node_info.scenario_node_name} not found in local scenario graph for node {scenario_node_name}')
 
-        # If all validations pass, insert node into db
-        self._insert_node(node_key, scenario_node_name if scenario_node_name else None, json.dumps(launch_params, indent=4) if launch_params else None, parent_key if parent_key else None, dependent_node_keys_or_infos)
+                        # ---- Mark the dependency as exists
+                        dep_map[dep_node_info.scenario_node_name] = True
+                        
+                    # --- Check dependency from a local node
+                    else:
+                        # ---- Check if it exists in the scene
+                        if not self._has_node(dep_key):
+                            raise ValueError(f'Dependency node {dep_key} not found in scene for node {node_key}')
+                        
+                        # ---- Check if it has a scenario node
+                        dep_node_record = self._load_node_record(dep_key, is_cascade=False)
+                        if dep_node_record.scenario_node is None:
+                            raise ValueError(f'Dependency node {dep_key} is a resource set node, not a resource node')
+                        
+                        # ---- Mark the dependency as exists
+                        dep_map[dep_node_record.scenario_node.name] = True
+                    
+                if not all(dep_map.values()):
+                    missing_deps = [name for name, exists in dep_map.items() if not exists]
+                    raise ValueError(f'Missing dependencies for node {scenario_node_name}: {", ".join(missing_deps)}')
+            
+            # Validate parent key
+            parent_key = '.'.join(node_key.split('.')[:-1])
+            if parent_key and not self._has_node(parent_key):
+                raise ValueError(f'Parent node "{parent_key}" not found in scene for node "{node_key}"')
 
-        logger.info(f'Successfully mounted node "{node_key}" with scenario "{scenario_node_name}"')
+            # If all validations pass, insert node into db
+            self._insert_node(node_key, scenario_node_name if scenario_node_name else None, json.dumps(launch_params, indent=4) if launch_params else None, parent_key if parent_key else None, dependent_node_keys_or_infos)
 
-    def unmount_node(self, node_key: str) -> None:
+            logger.info(f'Successfully mounted node "{node_key}" with scenario "{scenario_node_name}"')
+            return True, ''
+
+        except Exception as e:
+            logger.error(f'Failed to mount node "{node_key}": {e}')
+            return False, str(e)
+
+    def unmount_node(self, node_key: str) -> tuple[bool, str]:
         """Unmount a node from the scene"""
+        # If the node does not exist, return True, as it is already unmounted
         if not self._has_node(node_key):
-            logger.warning(f'Node "{node_key}" not found in scene, cannot unmount')
-            return
-        
-        # Try to unmount node recursively
-        nodes_count = 0
-        node_stack = [node_key]
-        nodes_to_delete: list[str] = []
-        while node_stack:
-            nodes_count += 1
-            current_key = node_stack.pop()
-            current_node = self._load_node_record(current_key, is_cascade=False)
-            
-            # If the node is depended, skip it
-            if self._is_node_dependency(current_key):
-                continue
-            # If the node is active, skip it
-            if RWLock.is_node_active(current_key):
-                continue
-            else:
-                nodes_to_delete.append(current_key)
-            
-            # If the current node has children (a resource set node)
-            # Add all children to the stack for deletion check
-            if current_node.is_set:
-                child_keys = self._get_child_keys(current_key)
-                node_stack.extend(child_keys)
-        
-        if len(nodes_to_delete) != nodes_count:
-            logger.warning(
-                f'Failed to unmount node "{node_key}": '
-                f'it is depended by {nodes_count - len(nodes_to_delete)} node(s). '
-                f'Remove dependencies first, then retry unmounting.'
-            )
-            return
+            return True, ''
 
-        # If the node has access information, it is a proxy of a remote node
-        # The dependency needs to be removed from the remote Noodle
-        access_info = self._load_node_record(node_key, is_cascade=False).access_info
-        if access_info:
-            server_url, remote_node_key = access_info.split('::')
-            req = DependencyRequest(
-                method='REMOVE',
-                node_key=remote_node_key,
-                dependent_key=node_key,
-                dependent_url=self.url,
-            )
-            response = requests.post(f'{server_url}/noodle/dependencies/', json=req.model_dump())
-            if response.status_code != 200:
-                logger.error(f'Failed to remove dependency from remote Noodle: {response.text}')
-                raise requests.RequestException(f'Failed to remove dependency: {response.text}')
-        
-        # Delete the node from the database
-        self._delete_node(node_key)
-        
-        logger.info(f'Successfully unmounted node "{node_key}"')
+        try:
+            # Try to unmount node recursively
+            nodes_count = 0
+            node_stack = [node_key]
+            nodes_to_delete: list[str] = []
+            while node_stack:
+                nodes_count += 1
+                current_key = node_stack.pop()
+                current_node = self._load_node_record(current_key, is_cascade=False)
+                
+                # If the node is depended, skip it
+                if self._is_node_dependency(current_key):
+                    continue
+                # If the node is active, skip it
+                if RWLock.is_node_active(current_key):
+                    continue
+                else:
+                    nodes_to_delete.append(current_key)
+                
+                # If the current node has children (a resource set node)
+                # Add all children to the stack for deletion check
+                if current_node.is_set:
+                    child_keys = self._get_child_keys(current_key)
+                    node_stack.extend(child_keys)
+            
+            if len(nodes_to_delete) != nodes_count:
+                message = f'Failed to unmount node "{node_key}": it is depended by {nodes_count - len(nodes_to_delete)} node(s). Remove dependencies first, then retry unmounting.'
+                raise ValueError(message)
+
+            # If the node has access information, it is a proxy of a remote node
+            # The dependency needs to be removed from the remote Noodle
+            access_info = self._load_node_record(node_key, is_cascade=False).access_info
+            if access_info:
+                server_url, remote_node_key = access_info.split('::')
+                req = DependencyRequest(
+                    method='REMOVE',
+                    node_key=remote_node_key,
+                    dependent_key=node_key,
+                    dependent_url=self.url,
+                )
+                response = requests.post(f'{server_url}/noodle/dependencies/', json=req.model_dump())
+                if response.status_code != 200:
+                    logger.error(f'Failed to remove dependency from remote Noodle: {response.text}')
+                    raise requests.RequestException(f'Failed to remove dependency: {response.text}')
+            
+            # Delete the node from the database
+            self._delete_node(node_key)
+            
+            logger.info(f'Successfully unmounted node "{node_key}"')
+            return True, ''
+
+        except Exception as e:
+            logger.error(f'Failed to unmount node "{node_key}": {e}')
+            return False, str(e)
 
     def get_node(
         self,
         icrm_class: Type[T], node_key: str,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None, retry_interval: float = 1.0
-    ) -> SceneNode[T]:
-        # If the node exists in a remote Noodle
-        # Return as a RemoteSceneNode
-        if node_key.startswith('http'):
-            return RemoteSceneNode(
-                icrm_class, node_key,
-                access_mode, timeout, retry_interval
-            )
-        
-        # Get node record from the scene
-        # Check if the node exists and not a resource set
-        node_record = self._load_node_record(node_key, is_cascade=False)
-        if node_record is None:
-            raise ValueError(f'Node "{node_key}" not found in scene tree')
-        if node_record.scenario_node is None:
-            raise ValueError(f'Node "{node_key}" is a resource set node, cannot get its service')
-        
-        # If the node is a proxy of a remote node
-        # Return as a RemoteSceneNodeProxy
-        if node_record.access_info is not None:
-            return RemoteSceneNodeProxy(
+    ) -> SceneNode[T] | None:
+        try:
+            # If the node exists in a remote Noodle
+            # Return as a RemoteSceneNode
+            if node_key.startswith('http'):
+                return RemoteSceneNode(
+                    icrm_class, node_key,
+                    access_mode, timeout, retry_interval
+                )
+            
+            # Get node record from the scene
+            # Check if the node exists and not a resource set
+            node_record = self._load_node_record(node_key, is_cascade=False)
+            if node_record is None:
+                raise ValueError(f'Node "{node_key}" not found in scene tree')
+            if node_record.scenario_node is None:
+                raise ValueError(f'Node "{node_key}" is a resource set node, cannot get its service')
+            
+            # If the node is a proxy of a remote node
+            # Return as a RemoteSceneNodeProxy
+            if node_record.access_info is not None:
+                return RemoteSceneNodeProxy(
+                    icrm_class, node_record,
+                    access_mode, timeout, retry_interval
+                )
+            
+            # If the node is a local node
+            # Return as a SceneNode
+            return SceneNode(
                 icrm_class, node_record,
                 access_mode, timeout, retry_interval
             )
-        
-        # If the node is a local node
-        # Return as a SceneNode
-        return SceneNode(
-            icrm_class, node_record,
-            access_mode, timeout, retry_interval
-        )
+            
+        except Exception as e:
+            logger.error(f'Error getting node "{node_key}": {e}')
+            return None
     
     @contextmanager
     def connect_node(
@@ -474,6 +495,8 @@ class Treeger:
     ) -> Generator[SceneNode[T], None, None]:
         """Context manager to connect to a node"""
         node = self.get_node(icrm_class, node_key, access_mode, timeout, retry_interval)
+        if node is None:
+            raise ValueError(f'Node "{node_key}" not found or inaccessible')
         try:
             yield node
         finally:
