@@ -448,6 +448,10 @@ class Treeger:
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None, retry_interval: float = 1.0
     ) -> SceneNode[T] | None:
+        # Check if icrm_class is valid
+        if icrm_class.direction == '<-':
+            raise ValueError(f'Provided icrm_class {icrm_class.__name__} is a CRM class, provide an ICRM class instead')
+        
         try:
             # If the node exists in a remote Noodle
             # Return as a RemoteSceneNode
