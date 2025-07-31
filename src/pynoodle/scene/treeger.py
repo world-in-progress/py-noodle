@@ -237,7 +237,7 @@ class Treeger:
             """, (node_key, dependent_node_key))
             conn.commit()
     
-    def import_node(
+    def proxy_node(
         self,
         node_key: str, scenario_node_name: str,
         server_url: str, remote_node_key: str
@@ -271,7 +271,7 @@ class Treeger:
             logger.error(f'Failed to add dependency to remote Noodle: {response.text}')
             raise requests.RequestException(f'Failed to add dependency: {response.text}')
 
-        logger.info(f'Successfully imported node "{node_key}" with scenario "{scenario_node_name}"')
+        logger.info(f'Successfully proxy node "{node_key}" with scenario "{scenario_node_name}"')
 
     def mount_node(
         self,

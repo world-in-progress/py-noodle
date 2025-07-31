@@ -254,7 +254,8 @@ class RemoteSceneNodeProxy(SceneNode[T]):
         super().__init__(icrm_class, record, access_mode, timeout, retry_interval)
         self._remote_url, self._remote_key = record.access_info.split('::')
         self._remote_lock_id: str | None = None
-    
+        self._icrm_class: Type[T] = record.scenario_node.icrm_class
+
     @property
     def server_scheme(self) -> Literal['http']:
         return 'http'
@@ -290,7 +291,7 @@ class RemoteSceneNodeProxy(SceneNode[T]):
             # Create an ICRM instance related to the remote node CRM
             # Refer to proxy_node() in src/pynoodle/endpoints/proxy.py for more details about the proxy API
             proxy_api = self.server_address  # can add &timeout=[-1.0 | <timeout>] if needed
-            self._crm = self._crm_class.__base__()
+            self._crm = self._icrm_class()
             
             # Add a C-Two RPC client
             client = cc.rpc.Client(proxy_api)

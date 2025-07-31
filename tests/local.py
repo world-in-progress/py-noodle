@@ -18,13 +18,25 @@ if __name__ == '__main__':
     print('\n----- Mount and import nodes ------\n')
     
     noodle.mount_node('root')
+    
+    # Mount local nodes: root.names
     # noodle.mount_node('root.names', 'test/names')
-    noodle.import_node('root.names', 'test/names', 'http://127.0.0.1:8000', 'names')
+    
+    # Proxy remote nodes http://127.0.0.1:8000::names as root.names
+    noodle.proxy_node('root.names', 'test/names', 'http://127.0.0.1:8000', 'names')
+    
+    # Mount local nodes: root.hello, dependent on remote node http://127.0.0.1:8000::names
     # noodle.mount_node('root.hello', 'test/hello', launch_params={'names_node_key': 'http://127.0.0.1:8000::names'}, dependent_node_keys_or_infos=['http://127.0.0.1:8000::names'])
+    
+    # Mount local nodes: root.hello, dependent on local node root.names
     noodle.mount_node('root.hello', 'test/hello', launch_params={'names_node_key': 'root.names'}, dependent_node_keys_or_infos=['root.names'])
 
     print('\n----- Connect to nodes ------\n')
 
+    # Connect to remote node http://127.0.0.1:8000::names
+    # with noodle.connect_node(INames, 'http://127.0.0.1:8000::names', 'lw') as names:
+    
+    # Connect to local node root.names
     with noodle.connect_node(INames, 'root.names', 'lw') as names:
         names.crm.add_name('Dave')
 
@@ -49,6 +61,6 @@ if __name__ == '__main__':
 
     print('\n----- Unmount nodes ------\n')
 
-    noodle.unmount_node('root.names')
-    noodle.unmount_node('root.hello')
-    noodle.unmount_node('root.names')
+    noodle.unmount_node('root.names')   # failed, as root.hello depends on it
+    noodle.unmount_node('root.hello')   # success, as it is not a dependency of any other node
+    noodle.unmount_node('root.names')   # success, as it is not a dependency of any other node

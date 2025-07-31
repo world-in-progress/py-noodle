@@ -35,11 +35,17 @@ class ScenarioNode:
     
     @property
     def icrm_name(self) -> str:
-        return self._crm_class.__base__.__name__
+        if self._crm_class.direction == '->':
+            return self._crm_class.__name__
+        else:
+            return self._crm_class.__base__.__name__
     
     @property
     def icrm_class(self) -> Type[T]:
-        return self._crm_class.__base__
+        if self._crm_class.direction == '->':
+            return self._crm_class
+        else:
+            return self._crm_class.__base__
 
 class Scenario:
     def __init__(self):
