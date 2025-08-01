@@ -11,7 +11,7 @@ from ..config import settings
 from ..scenario import scenario_graph
 from ..schemas.scene import SceneNodeInfo
 from ..schemas.dependencies import DependencyRequest
-from .scene_node import SceneNode, RemoteSceneNode, RemoteSceneNodeProxy, SceneNodeRecord
+from .scene_node import ISceneNode, SceneNode, RemoteSceneNode, RemoteSceneNodeProxy, SceneNodeRecord
 
 T = TypeVar('T')
 logger = logging.getLogger(__name__)
@@ -447,46 +447,46 @@ class Treeger:
         icrm_class: Type[T], node_key: str,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None, retry_interval: float = 1.0
-    ) -> SceneNode[T] | None:
+    ) -> ISceneNode[T] | None:
         # Check if icrm_class is valid
         if icrm_class.direction == '<-':
             raise ValueError(f'Provided icrm_class {icrm_class.__name__} is a CRM class, provide an ICRM class instead')
         
-        try:
-            # If the node exists in a remote Noodle
-            # Return as a RemoteSceneNode
-            if node_key.startswith('http'):
-                return RemoteSceneNode(
-                    icrm_class, node_key,
-                    access_mode, timeout, retry_interval
-                )
-            
-            # Get node record from the scene
-            # Check if the node exists and not a resource set
-            node_record = self._load_node_record(node_key, is_cascade=False)
-            if node_record is None:
-                raise ValueError(f'Node "{node_key}" not found in scene tree')
-            if node_record.scenario_node is None:
-                raise ValueError(f'Node "{node_key}" is a resource set node, cannot get its service')
-            
-            # If the node is a proxy of a remote node
-            # Return as a RemoteSceneNodeProxy
-            if node_record.access_info is not None:
-                return RemoteSceneNodeProxy(
-                    icrm_class, node_record,
-                    access_mode, timeout, retry_interval
-                )
-            
-            # If the node is a local node
-            # Return as a SceneNode
-            return SceneNode(
+        # try:
+        # If the node exists in a remote Noodle
+        # Return as a RemoteSceneNode
+        if node_key.startswith('http'):
+            return RemoteSceneNode(
+                icrm_class, node_key,
+                access_mode, timeout, retry_interval
+            )
+        
+        # Get node record from the scene
+        # Check if the node exists and not a resource set
+        node_record = self._load_node_record(node_key, is_cascade=False)
+        if node_record is None:
+            raise ValueError(f'Node "{node_key}" not found in scene tree')
+        if node_record.scenario_node is None:
+            raise ValueError(f'Node "{node_key}" is a resource set node, cannot get its service')
+        
+        # If the node is a proxy of a remote node
+        # Return as a RemoteSceneNodeProxy
+        if node_record.access_info is not None:
+            return RemoteSceneNodeProxy(
                 icrm_class, node_record,
                 access_mode, timeout, retry_interval
             )
+        
+        # If the node is a local node
+        # Return as a SceneNode
+        return SceneNode(
+            icrm_class, node_record,
+            access_mode, timeout, retry_interval
+        )
             
-        except Exception as e:
-            logger.error(f'Error getting node "{node_key}": {e}')
-            return None
+        # except Exception as e:
+        #     logger.error(f'Error getting node "{node_key}": {e}')
+        #     return None
     
     @contextmanager
     def connect_node(
@@ -496,7 +496,7 @@ class Treeger:
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None,
         retry_interval: float = 1.0
-    ) -> Generator[SceneNode[T], None, None]:
+    ) -> Generator[ISceneNode[T], None, None]:
         """Context manager to connect to a node"""
         node = self.get_node(icrm_class, node_key, access_mode, timeout, retry_interval)
         if node is None:

@@ -7,6 +7,7 @@ import threading
 import subprocess
 import c_two as cc
 from pydantic import BaseModel
+from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass, field
 from typing import TypeVar, Type, Generic, Literal
 
@@ -47,14 +48,50 @@ class SceneNodeRecord:
     @property
     def is_set(self):
         return self.scenario_node is None
+
+class ISceneNode(Generic[T], metaclass=ABCMeta):
+    @property
+    @abstractmethod
+    def node_key(self) -> str:
+        raise NotImplementedError
+    
+    @property
+    @abstractmethod
+    def server_scheme(self) -> Literal['local', 'memory', 'http']:
+        """Return the scheme of the server address"""
+        raise NotImplementedError
+    
+    @property
+    @abstractmethod
+    def server_address(self) -> str:
+        """Return the server address of the node"""
+        raise NotImplementedError
+    
+    @property
+    @abstractmethod
+    def crm(self) -> T:
+        """Return the CRM instance of the node"""
+        raise NotImplementedError
+    
+    @abstractmethod
+    def launch_crm_server(self):
+        """Launch the CRM server for the node"""
+        raise NotImplementedError
+    
+    @abstractmethod
+    def terminate(self):
+        """Terminate the CRM server and release resources"""
+        raise NotImplementedError
         
-class SceneNode(Generic[T]):
+class SceneNode(ISceneNode[T]):
     def __init__(
         self,
         icrm_class: Type[T], record: SceneNodeRecord,   # icrm_class only used for type hinting
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None, retry_interval: float = 0.1
     ):
+        super().__init__()
+        
         access_level = access_mode[0]
         lock_type = access_mode[1]
         
@@ -63,7 +100,7 @@ class SceneNode(Generic[T]):
         if access_level not in ['l', 'p']:
             raise ValueError("access level must be either 'l' for local or 'p' for process-level")
         
-        self.node_key = record.node_key
+        self._node_key = record.node_key
 
         self._thread_lock = threading.RLock()
 
@@ -72,7 +109,11 @@ class SceneNode(Generic[T]):
         self._crm_params = record.launch_params
         self._crm_class = record.scenario_node.crm_class
         self._crm_module = record.scenario_node.crm_module
-        self.lock = RWLock(self.node_key, lock_type, timeout, retry_interval)
+        self.lock = RWLock(self._node_key, lock_type, timeout, retry_interval)
+    
+    @property
+    def node_key(self) -> str:
+        return self._node_key
     
     @property
     def server_scheme(self) -> Literal['local', 'memory']:
@@ -90,7 +131,7 @@ class SceneNode(Generic[T]):
             scheme = 'local://'
         elif self._access_level == 'p':
             scheme = 'memory://'
-        return scheme + self.node_key.replace('.', '_')
+        return scheme + self._node_key.replace('.', '_')
     
     def launch_crm_server(self):
         with self._thread_lock:
@@ -110,7 +151,7 @@ class SceneNode(Generic[T]):
                     '-c',
                     scripts,
                     '--server_address', self.server_address,
-                    '--node_key', self.node_key,
+                    '--node_key', self._node_key,
                     '--params', self._crm_params
                 ]
             
@@ -120,7 +161,7 @@ class SceneNode(Generic[T]):
                 )
             
             except Exception as e:
-                raise RuntimeError(f'Failed to launch CRM server for node "{self.node_key}": {e}')
+                raise RuntimeError(f'Failed to launch CRM server for node "{self._node_key}": {e}')
         
     @property
     def crm(self) -> T:
@@ -142,7 +183,7 @@ class SceneNode(Generic[T]):
                 count = 0
                 while cc.rpc.Client.ping(self.server_address, 0.5) is False:
                     if count >= 120: # 60 seconds timeout
-                        raise TimeoutError(f'CRM server "{self.node_key}" did not start in time')
+                        raise TimeoutError(f'CRM server "{self._node_key}" did not start in time')
                     time.sleep(0.5)
                     count += 1
                 
@@ -167,13 +208,15 @@ class SceneNode(Generic[T]):
             # Release the lock
             self.lock.release()
 
-class RemoteSceneNode(SceneNode[T]):
+class RemoteSceneNode(ISceneNode[T]):
     def __init__(
         self,
         icrm_class: Type[T], access_info: str,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None, retry_interval: float = 0.1
     ):
+        super().__init__()
+        
         access_level = access_mode[0]
         lock_type = access_mode[1]
         
@@ -182,7 +225,7 @@ class RemoteSceneNode(SceneNode[T]):
         if access_level not in ['l', 'p']:
             raise ValueError("access level must be either 'l' for local or 'p' for process-level")
         
-        self.node_key = access_info
+        self._node_key = access_info
         self._remote_url, self._remote_key = access_info.split('::')
         
         self._thread_lock = threading.RLock()
@@ -195,6 +238,10 @@ class RemoteSceneNode(SceneNode[T]):
         self._lock_type = lock_type
         self._access_level = access_level
         self._retry_interval = retry_interval
+    
+    @property
+    def node_key(self) -> str:
+        return self._node_key
     
     @property
     def server_scheme(self) -> Literal['http']:
@@ -252,9 +299,14 @@ class RemoteSceneNodeProxy(SceneNode[T]):
         timeout: float | None = None, retry_interval: float = 0.1
     ):
         super().__init__(icrm_class, record, access_mode, timeout, retry_interval)
+        self._node_key = record.node_key
         self._remote_url, self._remote_key = record.access_info.split('::')
         self._remote_lock_id: str | None = None
         self._icrm_class: Type[T] = record.scenario_node.icrm_class
+    
+    @property
+    def node_key(self) -> str:
+        return self._node_key
 
     @property
     def server_scheme(self) -> Literal['http']:

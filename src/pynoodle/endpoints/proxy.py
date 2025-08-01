@@ -31,7 +31,7 @@ async def activate_node(node_key: str, lock_type: Literal['r', 'w'], timeout: fl
         count = 0
         while cc.rpc.Client.ping(node.server_address, 0.5) is False:
             if (timeout is not None) and count >= timeout * 2:
-                raise TimeoutError(f'CRM server "{node.node_key}" did not start in time')
+                raise TimeoutError(f'CRM server "{node._node_key}" did not start in time')
             await asyncio.sleep(0.5)
             count += 1
         
