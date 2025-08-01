@@ -1,9 +1,9 @@
 scenario_nodes:
-  - name: test/INames
+  - name: Names
     crm_name: Names
     crm_module: tests.crms.names
-  - name: test/IHello
+  - name: Hello
     crm_name: Hello
     crm_module: tests.crms.hello
     dependencies:
-      - test/INames
+      - Names
