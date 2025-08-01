@@ -1,7 +1,6 @@
+module_root: tests.module
 scenario_nodes:
-  - name: Names
-    module: tests.names
-  - name: Hello
-    module: tests.hello
+  - name: names
+  - name: hello
     dependencies:
-      - Names
+      - names

@@ -5,8 +5,8 @@ import logging
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.pynoodle import noodle, NOODLE_INIT
-from tests.hello import IHello
-from tests.names import INames
+from tests.module.hello import IHello
+from tests.module.names import INames
 
 logging.basicConfig(level=logging.INFO)
 
@@ -20,21 +20,21 @@ if __name__ == '__main__':
     noodle.mount_node('root')
     
     # Mount local nodes: root.names
-    # noodle.mount_node('root.names', 'Names')
+    # noodle.mount_node('root.names', 'names')
     
-    # Proxy remote nodes http://127.0.0.1:8000::names as root.names
-    noodle.proxy_node('root.names', 'Names', 'http://127.0.0.1:8000', 'names')
-    
-    # Mount local nodes: root.hello, dependent on remote node http://127.0.0.1:8000::names
-    # noodle.mount_node('root.hello', 'Hello', launch_params={'names_node_key': 'http://127.0.0.1:8000::names'}, dependent_node_keys_or_infos=['http://127.0.0.1:8000::names'])
+    # Proxy remote nodes http://127.0.0.1:8000::nameSet as root.names
+    noodle.proxy_node('root.names', 'names', 'http://127.0.0.1:8000', 'nameSet')
     
     # Mount local nodes: root.hello, dependent on local node root.names
-    noodle.mount_node('root.hello', 'Hello', launch_params={'names_node_key': 'root.names'}, dependent_node_keys_or_infos=['root.names'])
+    noodle.mount_node('root.hello', 'hello', launch_params={'names_node_key': 'root.names'}, dependent_node_keys_or_infos=['root.names'])
+    
+    # Mount local nodes: root.hello, dependent on remote node http://127.0.0.1:8000::nameSet
+    # noodle.mount_node('root.hello', 'hello', launch_params={'names_node_key': 'http://127.0.0.1:8000::nameSet'}, dependent_node_keys_or_infos=['http://127.0.0.1:8000::nameSet'])
 
     print('\n----- Connect to nodes ------\n')
 
-    # Connect to remote node http://127.0.0.1:8000::names
-    # with noodle.connect_node(INames, 'http://127.0.0.1:8000::names', 'lw') as names:
+    # Connect to remote node http://127.0.0.1:8000::nameSet
+    # with noodle.connect_node(INames, 'http://127.0.0.1:8000::nameSet', 'lw') as names:
     
     # Connect to local node root.names
     with noodle.connect_node(INames, 'root.names', 'lw') as names:

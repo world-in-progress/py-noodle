@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.pynoodle import noodle, NOODLE_INIT
-from tests.names import INames
+from tests.module.names import INames
 
 logging.basicConfig(level=logging.INFO)
 
@@ -17,8 +17,8 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     NOODLE_INIT(app)
 
-    noodle.mount_node('names', 'Names')
-    with noodle.connect_node(INames, 'names', 'lw') as names:
+    noodle.mount_node('names', 'names')
+    with noodle.connect_node(INames, 'nameSet', 'lw') as names:
         crm = names.crm
         crm.add_name('Alice')
         crm.add_name('Bob')

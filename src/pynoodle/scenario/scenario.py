@@ -69,10 +69,11 @@ class Scenario:
         self.graph: dict[str, ScenarioNode] = {}
         
         # - Firstly, create all nodes
+        module_root = f'{config.module_root}.' if config.module_root else ''
         for node_description in config.scenario_nodes:
             node = ScenarioNode(
                 name=node_description.name,
-                module=node_description.module,
+                module=module_root + node_description.name,
                 dependencies=[]
             )
             self.graph[node_description.name] = node
