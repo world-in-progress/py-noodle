@@ -1,6 +1,6 @@
 from src.pynoodle import icrm
 
-@icrm
+@icrm('test')
 class IHello:
     def greet(self, index: int) -> str:
         ...

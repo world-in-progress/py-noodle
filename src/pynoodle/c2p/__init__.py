@@ -5,9 +5,13 @@ from typing import TypeVar
 T = TypeVar('T')
 logger = logging.getLogger(__name__)
 
-icrm = cc.icrm
-
 transferable = cc.transferable
+
+def icrm(namespace: str) -> T:
+    def wrapper(cls: T) -> T:
+        cls.__namespace__ = namespace
+        return cc.icrm(cls)
+    return wrapper
 
 def crm(cls: T) -> T:
     if not hasattr(cls, 'terminate'):
