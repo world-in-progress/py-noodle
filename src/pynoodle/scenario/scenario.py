@@ -46,6 +46,10 @@ class ScenarioNode:
     @property
     def namespace(self) -> str:
         return self.icrm_class.__namespace__
+    
+    @property
+    def icrm_tag(self) -> str:
+        return f'{self.namespace}/{self.icrm_name}'
 
 class Scenario:
     def __init__(self):
@@ -84,5 +88,11 @@ class Scenario:
         if scenario_node_name not in self.graph:
             return None
         return self.graph[scenario_node_name]
+
+    def get_icrm_tag(self, scenario_node_name: str) -> str | None:
+        node = self.graph.get(scenario_node_name)
+        if not node:
+            return None
+        return node.icrm_tag
 
 scenario_graph = Scenario()
