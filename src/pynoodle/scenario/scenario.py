@@ -26,19 +26,8 @@ class ScenarioNode:
         return self.name.split('/')[0]
     
     @property
-    def crm_class(self) -> Type[T]:
-        with self._lock:
-            if self._crm_class is None:
-                module = __import__(self.crm_module, fromlist=[''])
-                self._crm_class = getattr(module, self.crm_name)
-            return self._crm_class
-    
-    @property
     def icrm_name(self) -> str:
-        if self._crm_class.direction == '->':
-            return self._crm_class.__name__
-        else:
-            return self._crm_class.__base__.__name__
+        return self.name.split('/')[1]
     
     @property
     def icrm_class(self) -> Type[T]:
@@ -46,6 +35,14 @@ class ScenarioNode:
             return self._crm_class
         else:
             return self._crm_class.__base__
+    
+    @property
+    def crm_class(self) -> Type[T]:
+        with self._lock:
+            if self._crm_class is None:
+                module = __import__(self.crm_module, fromlist=[''])
+                self._crm_class = getattr(module, self.crm_name)
+            return self._crm_class
 
 class Scenario:
     def __init__(self):

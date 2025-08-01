@@ -8,6 +8,9 @@ logger = logging.getLogger(__name__)
 transferable = cc.transferable
 
 def icrm(namespace: str) -> T:
+    if not namespace:
+        raise ValueError('Namespace of ICRM cannot be empty.')
+    
     def wrapper(cls: T) -> T:
         cls.__namespace__ = namespace
         return cc.icrm(cls)

@@ -12,13 +12,19 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.get('/', response_model=LockInfo)
-async def activate_node(node_key: str, lock_type: Literal['r', 'w'], timeout: float | None = None, retry_interval: float = 1.0):
+async def activate_node(node_key: str, scenario_node_name: str, lock_type: Literal['r', 'w'], timeout: float | None = None, retry_interval: float = 1.0):
     """
     Activates a node in the Noodle system.
     """
     try:
+        # Try to get scenario node
+        scenario_node = noodle.scenario.graph[scenario_node_name]
+        if not scenario_node:
+            namespace, icrm_class_name = scenario_node_name.split('/')
+            raise HTTPException(status_code=404, detail=f'ICRM class {icrm_class_name} not found in namespace {namespace}')
+    
         # Get the node
-        node = noodle.get_node(None, node_key, 'p' + lock_type, timeout, retry_interval)
+        node = noodle.get_node(scenario_node.icrm_class, node_key, 'p' + lock_type, timeout, retry_interval)
 
         # Acquire the lock for the node asynchronously
         lock = node._lock
