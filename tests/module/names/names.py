@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 @crm
 class Names(INames):
     def __init__(self):
-        self.name_path = Path.cwd() / 'tests' / 'names' / 'names.json'
+        self.name_path = Path.cwd() / 'tests' / 'module' / 'names' / 'names.json'
         if not self.name_path.exists():
             self.name_path.parent.mkdir(parents=True, exist_ok=True)
             self.names: list[str] = []

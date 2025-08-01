@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     NOODLE_INIT(app)
 
-    noodle.mount_node('names', 'names')
+    noodle.mount_node('nameSet', 'names')
     with noodle.connect_node(INames, 'nameSet', 'lw') as names:
         crm = names.crm
         crm.add_name('Alice')
