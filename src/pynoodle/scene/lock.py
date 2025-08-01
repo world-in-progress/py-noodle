@@ -61,6 +61,13 @@ class RWLock:
             return cursor.fetchone() is not None
     
     @staticmethod
+    def remove_lock(lock_id: str) -> None:
+        """Remove a lock with the given ID."""
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
+            conn.execute('DELETE FROM locks WHERE lock_id = ?', (lock_id,))
+            conn.commit()
+    
+    @staticmethod
     def clear_all() -> None:
         """Remove all locks from the database."""
         # If no table, do nothing

@@ -467,7 +467,6 @@ class Treeger:
         if icrm_class and icrm_class.direction == '<-':
             raise ValueError(f'Provided icrm_class {icrm_class.__name__} is a CRM class, provide an ICRM class instead')
         
-        # try:
         # If the node exists in a remote Noodle
         # Return as a RemoteSceneNode
         if node_key.startswith('http'):
@@ -498,10 +497,6 @@ class Treeger:
             icrm_class, node_record,
             access_mode, timeout, retry_interval
         )
-            
-        # except Exception as e:
-        #     logger.error(f'Error getting node "{node_key}": {e}')
-        #     return None
     
     @contextmanager
     def connect_node(
