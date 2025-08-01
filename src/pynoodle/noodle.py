@@ -17,13 +17,13 @@ class Noodle(Treeger):
             cursor = conn.execute(f'SELECT 1 FROM {SCENE_TABLE} WHERE {NODE_KEY} = ?', (node_key,))
             return cursor.fetchone() is not None
     
-    def node_server_address(self, node_key: str, access_level: Literal['l', 'p']) -> str:
+    def node_server_address(self, node_key: str, lock_id: str, access_level: Literal['l', 'p']) -> str:
         """Get the server address for a node based on its access level."""
         scheme = ''
         if access_level == 'l':
             scheme = 'local://'
         elif access_level == 'p':
             scheme = 'memory://'
-        return scheme + node_key.replace('.', '_')
+        return scheme + node_key.replace('.', '_') + f'_{lock_id}'
 
 noodle = Noodle()

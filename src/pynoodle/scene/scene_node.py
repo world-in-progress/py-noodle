@@ -140,7 +140,7 @@ class SceneNode(ISceneNode[T]):
             scheme = 'local://'
         elif self._access_level == 'p':
             scheme = 'memory://'
-        return scheme + self._node_key.replace('.', '_')
+        return scheme + self._node_key.replace('.', '_') + f'_{self._lock.id}'
     
     def launch_crm_server(self):
         with self._thread_lock:
@@ -287,7 +287,7 @@ class RemoteSceneNode(ISceneNode[T]):
             
             # Create an ICRM instance related to the remote node CRM
             # Refer to proxy_node() in src/pynoodle/endpoints/proxy.py for more details about the proxy API
-            proxy_api = self.server_address  # can add &timeout=[-1.0 | <timeout>] if needed
+            proxy_api = f'{self.server_address}&lock_id={self._remote_lock_id}'  # can add &timeout=[-1.0 | <timeout>] if needed
             self._crm = self._icrm_class()
             
             # Add a C-Two RPC client
@@ -349,7 +349,7 @@ class RemoteSceneNodeProxy(SceneNode[T]):
             
             # Create an ICRM instance related to the remote node CRM
             # Refer to proxy_node() in src/pynoodle/endpoints/proxy.py for more details about the proxy API
-            proxy_api = self.server_address  # can add &timeout=[-1.0 | <timeout>] if needed
+            proxy_api = f'{self.server_address}&lock_id={self._remote_lock_id}'  # can add &timeout=[-1.0 | <timeout>] if needed
             self._crm = self._icrm_class()
             
             # Add a C-Two RPC client

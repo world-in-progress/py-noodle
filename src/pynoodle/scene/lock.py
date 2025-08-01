@@ -27,7 +27,7 @@ class RWLock:
         self.lock_type = lock_type
         self.retry_interval = retry_interval
         self.timeout = timeout if (timeout is not None and timeout >= 0) else None
-        self.id = f'pid_{os.getpid()}-tid_{threading.get_ident()}-{uuid.uuid4().hex}'
+        self.id = f'pid_{os.getpid()}_tid_{threading.get_ident()}_{uuid.uuid4().hex}'
         
     def _get_connection(self):
         """Creates a new database connection."""
@@ -49,12 +49,15 @@ class RWLock:
     @staticmethod
     def is_node_active(node_key: str) -> bool:
         """Check if a node is currently active."""
-        db_path = Path(settings.SQLITE_PATH)
-        if not db_path.is_absolute():
-            db_path = Path.cwd() / db_path
-            
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
             cursor = conn.execute('SELECT 1 FROM locks WHERE node_key = ?', (node_key,))
+            return cursor.fetchone() is not None
+    
+    @staticmethod
+    def has_lock(lock_id: str) -> bool:
+        """Check if a lock with the given ID exists."""
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
+            cursor = conn.execute('SELECT 1 FROM locks WHERE lock_id = ?', (lock_id,))
             return cursor.fetchone() is not None
     
     @staticmethod

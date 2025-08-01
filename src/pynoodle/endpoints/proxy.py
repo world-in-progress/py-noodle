@@ -36,10 +36,11 @@ async def activate_node(node_key: str, icrm_tag: str, lock_type: Literal['r', 'w
         
         # Launch the node CRM server at process level
         node.launch_crm_server()
+        server_address = noodle.node_server_address(node_key, lock.id, 'p')
 
         # Spin up the CRM server, asynchronously wait for it to be ready
         count = 0
-        while cc.rpc.Client.ping(node.server_address, 0.5) is False:
+        while cc.rpc.Client.ping(server_address, 0.5) is False:
             if (timeout is not None) and count >= timeout * 2:
                 raise TimeoutError(f'CRM server "{node._node_key}" did not start in time')
             await asyncio.sleep(0.5)
@@ -50,18 +51,18 @@ async def activate_node(node_key: str, icrm_tag: str, lock_type: Literal['r', 'w
         raise HTTPException(status_code=500, detail=f'Error activating node {node_key}: {e}')
 
 @router.post('/')
-async def proxy_node(node_key: str, timeout: float | None = None, body: bytes=Body(..., description='C-Two Event Message in Bytes')):
+async def proxy_node(node_key: str, lock_id: str, timeout: float | None = None, body: bytes=Body(..., description='C-Two Event Message in Bytes')):
     """
     Proxies a C-Two event message to the specified node.
     """
     try:
-        # Check if the node exists
-        if not noodle.has_node(node_key):
-            raise HTTPException(status_code=404, detail=f'Node {node_key} not found')
+        # Check if the lock exists
+        if not RWLock.has_lock(lock_id):
+            raise HTTPException(status_code=404, detail=f'Lock {lock_id} not found for node {node_key}')
         
         # Relay the message to the node's CRM server asynchronously
         timeout = timeout if timeout is not None else -1.0
-        res = await cc.rpc.routing(noodle.node_server_address(node_key, 'p'), body, timeout)
+        res = await cc.rpc.routing(noodle.node_server_address(node_key, lock_id, 'p'), body, timeout)
         return Response(res, media_type='application/octet-stream')
     
     except Exception as e:
@@ -73,8 +74,12 @@ def deactivate_node(node_key: str, lock_id: str):
     Deactivates a node in the Noodle system.
     """
     try:
+        # Check if the lock exists
+        if not RWLock.has_lock(lock_id):
+            raise HTTPException(status_code=404, detail=f'Lock {lock_id} not found for node {node_key}')
+        
         # Shutdown the node's CRM server
-        cc.rpc.Client.shutdown(noodle.node_server_address(node_key, 'p'), -1.0)
+        cc.rpc.Client.shutdown(noodle.node_server_address(node_key, lock_id, 'p'), -1.0)
         
         # Release a local lock (mock as a write lock)
         lock = RWLock(node_key, 'w')
