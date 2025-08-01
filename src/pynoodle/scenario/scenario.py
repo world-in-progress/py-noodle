@@ -14,8 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ScenarioNode:
     name: str
-    crm_name: str
-    crm_module: str
+    module: str
     dependencies: list['ScenarioNode']
     
     _crm_class: Type[T] = None
@@ -25,8 +24,12 @@ class ScenarioNode:
     def crm_class(self) -> Type[T]:
         with self._lock:
             if self._crm_class is None:
-                module = __import__(self.crm_module, fromlist=[''])
-                self._crm_class = getattr(module, self.crm_name)
+                m = __import__(self.module, fromlist=[''])
+                self._crm_class = getattr(m, 'CRM', None)
+                if not self._crm_class:
+                    self._crm_class = getattr(m, 'ICRM', None)
+                if not self._crm_class:
+                    raise ImportError(f'ICRM class not found in module {self.module}')
             return self._crm_class
     
     @property
@@ -69,8 +72,7 @@ class Scenario:
         for node_description in config.scenario_nodes:
             node = ScenarioNode(
                 name=node_description.name,
-                crm_name=node_description.crm_name,
-                crm_module=node_description.crm_module,
+                module=node_description.module,
                 dependencies=[]
             )
             self.graph[node_description.name] = node

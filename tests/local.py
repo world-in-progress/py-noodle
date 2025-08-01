@@ -5,8 +5,8 @@ import logging
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.pynoodle import noodle, NOODLE_INIT
-from tests.icrms.ihello import IHello
-from tests.icrms.inames import INames
+from tests.hello import IHello
+from tests.names import INames
 
 logging.basicConfig(level=logging.INFO)
 

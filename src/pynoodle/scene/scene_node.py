@@ -113,7 +113,7 @@ class SceneNode(ISceneNode[T]):
         self._access_level = access_level
         self._crm_params = record.launch_params
         self._crm_class = record.scenario_node.crm_class
-        self._crm_module = record.scenario_node.crm_module
+        self._crm_module = record.scenario_node.module
         self._lock = RWLock(self._node_key, lock_type, timeout, retry_interval)
     
     @property
@@ -144,7 +144,7 @@ class SceneNode(ISceneNode[T]):
     
     def launch_crm_server(self):
         with self._thread_lock:
-            import_script = f'from {self._crm_module} import {self._crm_class.__name__} as CRM\n'
+            import_script = f'from {self._crm_module} import CRM\n'
             scripts = CRM_LAUNCHER_IMPORT_TEMPLATE + import_script + CRM_LAUNCHER_RUNNING_TEMPLATE
             
             # Try to launch a CRM server (Process-Level) related to the node
