@@ -52,6 +52,11 @@ class SceneNodeRecord:
 class ISceneNode(Generic[T], metaclass=ABCMeta):
     @property
     @abstractmethod
+    def lock(self) -> RWLock:
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
     def node_key(self) -> str:
         raise NotImplementedError
     
@@ -109,7 +114,11 @@ class SceneNode(ISceneNode[T]):
         self._crm_params = record.launch_params
         self._crm_class = record.scenario_node.crm_class
         self._crm_module = record.scenario_node.crm_module
-        self.lock = RWLock(self._node_key, lock_type, timeout, retry_interval)
+        self._lock = RWLock(self._node_key, lock_type, timeout, retry_interval)
+    
+    @property
+    def lock(self) -> RWLock:
+        return self._lock
     
     @property
     def node_key(self) -> str:
@@ -169,7 +178,7 @@ class SceneNode(ISceneNode[T]):
             if self._crm is not None:
                 return self._crm
             
-            self.lock.acquire()
+            self._lock.acquire()
 
             if self._access_level == 'l':
                 params = json.loads(self._crm_params) if self._crm_params else {}
@@ -206,7 +215,7 @@ class SceneNode(ISceneNode[T]):
                 self._crm.client.shutdown(self.server_address, -1.0)
                 
             # Release the lock
-            self.lock.release()
+            self._lock.release()
 
 class RemoteSceneNode(ISceneNode[T]):
     def __init__(
@@ -238,6 +247,10 @@ class RemoteSceneNode(ISceneNode[T]):
         self._lock_type = lock_type
         self._access_level = access_level
         self._retry_interval = retry_interval
+    
+    @property
+    def lock(self) -> RWLock:
+        return None  # remote nodes do not have a local lock, they use remote locks
     
     @property
     def node_key(self) -> str:
@@ -299,14 +312,9 @@ class RemoteSceneNodeProxy(SceneNode[T]):
         timeout: float | None = None, retry_interval: float = 0.1
     ):
         super().__init__(icrm_class, record, access_mode, timeout, retry_interval)
-        self._node_key = record.node_key
         self._remote_url, self._remote_key = record.access_info.split('::')
         self._remote_lock_id: str | None = None
         self._icrm_class: Type[T] = record.scenario_node.icrm_class
-    
-    @property
-    def node_key(self) -> str:
-        return self._node_key
 
     @property
     def server_scheme(self) -> Literal['http']:
@@ -327,13 +335,13 @@ class RemoteSceneNodeProxy(SceneNode[T]):
             if self._crm is not None:
                 return self._crm
             
-            self.lock.acquire()
+            self._lock.acquire()
             
             # Get the twin lock from the remote Noodle
             # Refer to activate_node() in src/pynoodle/endpoints/proxy.py for more details about the lock API
             lock_api = (
-                f'{self.server_address}&lock_type={self.lock.lock_type}&retry_interval={self.lock.retry_interval}' \
-                + (f'&timeout={self.lock.timeout}' if self.lock.timeout is not None else '')
+                f'{self.server_address}&lock_type={self._lock.lock_type}&retry_interval={self._lock.retry_interval}' \
+                + (f'&timeout={self._lock.timeout}' if self._lock.timeout is not None else '')
             )
             response = requests.get(lock_api)
             if response.status_code != 200:
@@ -357,4 +365,4 @@ class RemoteSceneNodeProxy(SceneNode[T]):
             response = requests.delete(deactivate_api)
             if response.status_code != 200:
                 raise RuntimeError(f'Failed to deactivate remote CRM server: {response.text}')
-            self.lock.release()
+            self._lock.release()

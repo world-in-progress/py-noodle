@@ -444,12 +444,12 @@ class Treeger:
 
     def get_node(
         self,
-        icrm_class: Type[T], node_key: str,
+        icrm_class: Type[T] | None, node_key: str,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None, retry_interval: float = 1.0
     ) -> ISceneNode[T] | None:
-        # Check if icrm_class is valid
-        if icrm_class.direction == '<-':
+        # Check if icrm_class is valid (must be an ICRM class)
+        if icrm_class and icrm_class.direction == '<-':
             raise ValueError(f'Provided icrm_class {icrm_class.__name__} is a CRM class, provide an ICRM class instead')
         
         # try:
@@ -491,7 +491,7 @@ class Treeger:
     @contextmanager
     def connect_node(
         self,
-        icrm_class: Type[T],
+        icrm_class: Type[T] | None,
         node_key: str,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None,

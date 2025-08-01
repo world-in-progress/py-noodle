@@ -17,11 +17,11 @@ async def activate_node(node_key: str, lock_type: Literal['r', 'w'], timeout: fl
     Activates a node in the Noodle system.
     """
     try:
-        # Get the node (mock icrm_class as bool)
-        node = noodle.get_node(bool, node_key, 'p' + lock_type, timeout, retry_interval)
+        # Get the node
+        node = noodle.get_node(None, node_key, 'p' + lock_type, timeout, retry_interval)
 
         # Acquire the lock for the node asynchronously
-        lock = node.lock
+        lock = node._lock
         await lock.async_acquire()
         
         # Launch the node CRM server at process level
