@@ -8,8 +8,8 @@ from typing import TypeVar, Literal, Type, Generator
 
 from .lock import RWLock
 from ..config import settings
-from ..scenario import scenario_graph
 from ..schemas.scene import SceneNodeInfo
+from ..scenario import scenario_graph, ScenarioNode
 from ..schemas.dependencies import DependencyRequest
 from .scene_node import ISceneNode, SceneNode, RemoteSceneNode, RemoteSceneNodeProxy, SceneNodeRecord
 
@@ -297,6 +297,7 @@ class Treeger:
         if not scenario_node_name and launch_params:
             logger.warning(f'Launch parameters are provided for resource set node "{node_key}", ignoring them')
 
+        scenario_node: ScenarioNode | None = None
         try:
             # Validate resource node
             if scenario_node_name:
@@ -371,8 +372,16 @@ class Treeger:
             if parent_key and not self._has_node(parent_key):
                 raise ValueError(f'Parent node "{parent_key}" not found in scene for node "{node_key}"')
 
+            # Validate and convert launch parameters
+            if scenario_node:
+                launch_params = scenario_node.params_converter(node_key, launch_params)
+
             # If all validations pass, insert node into db
             self._insert_node(node_key, scenario_node_name if scenario_node_name else None, json.dumps(launch_params, indent=4) if launch_params else None, parent_key if parent_key else None, dependent_node_keys_or_infos)
+            
+            # Call mount hook
+            if scenario_node:
+                scenario_node.mount(node_key)
 
             logger.info(f'Successfully mounted node "{node_key}" with scenario "{scenario_node_name}"')
             return True, ''
@@ -419,7 +428,8 @@ class Treeger:
             # If the node has access information, it is a proxy of a remote node
             # The dependency needs to be removed from the remote Noodle
             access_info = self._load_node_record(node_key, is_cascade=False).access_info
-            if access_info:
+            is_proxy = access_info is not None and '::' in access_info
+            if is_proxy:
                 server_url, remote_node_key = access_info.split('::')
                 req = DependencyRequest(
                     method='REMOVE',
@@ -433,7 +443,12 @@ class Treeger:
                     raise requests.RequestException(f'Failed to remove dependency: {response.text}')
             
             # Delete the node from the database
+            scenario_node = self._load_node_record(node_key, is_cascade=False).scenario_node
             self._delete_node(node_key)
+            
+            # Call unmount hook for non-resource-set and non-proxy nodes
+            if scenario_node and not is_proxy:
+                scenario_node.unmount(node_key)
             
             logger.info(f'Successfully unmounted node "{node_key}"')
             return True, ''

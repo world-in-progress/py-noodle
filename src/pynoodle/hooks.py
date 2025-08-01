@@ -14,15 +14,6 @@ def NOODLE_INIT(app: FastAPI | None = None) -> None:
         
         # Initialize RWLock
         RWLock.init()
-    
-        # Pre-remove all locks if configured
-        if settings.PRE_REMOVE_ALL_LOCKS:
-            RWLock.clear_all()
-
-        # Pre-remove existing memory temp directory if configured
-        if settings.PRE_REMOVE_MEMORY_TEMP_PATH:
-            if settings.MEMORY_TEMP_PATH.exists():
-                shutil.rmtree(settings.MEMORY_TEMP_PATH)
             
         # Create a new memory temp directory
         settings.MEMORY_TEMP_PATH.mkdir(parents=True, exist_ok=True)
@@ -32,3 +23,14 @@ def NOODLE_INIT(app: FastAPI | None = None) -> None:
             app.include_router(router, prefix='/noodle', tags=['noodle'])
         else:
             logger.debug('No FastAPI app provided, Noodle endpoints will not be registered.')
+
+def NOODLE_TERMINATE() -> None:
+    """Terminate Noodle CRM servers running in process level and clean up locks."""
+    
+    # Forcefully shutdown all nodes' CRM servers running in process level
+    # Nodes's CRM servers running in local level will be automatically shutdown when the process exits
+    if settings.MEMORY_TEMP_PATH.exists():
+        shutil.rmtree(settings.MEMORY_TEMP_PATH)
+    
+    # Clear all locks
+    RWLock.clear_all()

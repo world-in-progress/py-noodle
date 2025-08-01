@@ -11,11 +11,9 @@ class Settings(BaseSettings):
     
     # Scene database settings
     SQLITE_PATH: Path
-    PRE_REMOVE_ALL_LOCKS: bool = True
     
     # Memory temp directory settings
     MEMORY_TEMP_PATH: Path = Path('./temp')
-    PRE_REMOVE_MEMORY_TEMP_PATH: bool = True
 
     @field_validator('SQLITE_PATH', 'MEMORY_TEMP_PATH', mode='before')
     @classmethod

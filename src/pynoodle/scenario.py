@@ -2,11 +2,11 @@ import yaml
 import logging
 import threading
 from pathlib import Path
-from typing import TypeVar, Type
 from dataclasses import dataclass
+from typing import TypeVar, Type, Callable
 
-from ..config import settings
-from ..schemas.scenario import ScenarioConfiguration
+from .config import settings
+from .schemas.scenario import ScenarioConfiguration
 
 T = TypeVar('T')
 logger = logging.getLogger(__name__)
@@ -18,33 +18,75 @@ class ScenarioNode:
     dependencies: list['ScenarioNode']
     
     _crm_class: Type[T] = None
+    _icrm_class: Type[T] = None
+    _mount: Callable[[str], None] = None
+    _unmount: Callable[[str], None] = None
     _lock: threading.Lock = threading.Lock()
+    _params_converter: Callable[[str, dict | None], dict | None] = None
+    
+    def _load_from_module(self):
+        m = __import__(self.module, fromlist=[''])
+        self._icrm_class = getattr(m, 'ICRM', None)
+        if not self._icrm_class:
+            raise ImportError(f'ICRM class not found in module {self.module}')
+        
+        self._crm_class = getattr(m, 'CRM', None)
+        if not self._crm_class:
+            self._crm_class = self._icrm_class
+
+        self._mount = getattr(m, 'MOUNT', None)
+        if not self._mount:
+            # Use an empty callable if MOUNT is not defined (no warning, because it might be optional)
+            self._mount = lambda x: None
+
+        self._unmount = getattr(m, 'UNMOUNT', None)
+        if not self._unmount:
+            # Use an empty callable if UNMOUNT is not defined (no warning, because it might be optional)
+            self._unmount = lambda x: None
+        
+        self._params_converter = getattr(m, 'PARAM_CONVERTER', None)
+        if not self._params_converter:
+            # Use an empty callable if PARAM_CONVERTER is not defined (no warning, because it might be optional)
+            self._params_converter = lambda x, y: y
     
     @property
     def crm_class(self) -> Type[T]:
         with self._lock:
             if self._crm_class is None:
-                m = __import__(self.module, fromlist=[''])
-                self._crm_class = getattr(m, 'CRM', None)
-                if not self._crm_class:
-                    self._crm_class = getattr(m, 'ICRM', None)
-                if not self._crm_class:
-                    raise ImportError(f'ICRM class not found in module {self.module}')
+                self._load_from_module()
             return self._crm_class
-    
-    @property
-    def icrm_name(self) -> str:
-        if self._crm_class.direction == '->':
-            return self._crm_class.__name__
-        else:
-            return self._crm_class.__base__.__name__
     
     @property
     def icrm_class(self) -> Type[T]:
-        if self._crm_class.direction == '->':
-            return self._crm_class
-        else:
-            return self._crm_class.__base__
+        with self._lock:
+            if self._icrm_class is None:
+                self._load_from_module()
+            return self._icrm_class
+    
+    @property
+    def mount(self) -> Callable[[str], None]:
+        with self._lock:
+            if self._mount is None:
+                self._load_from_module()
+            return self._mount
+    
+    @property
+    def unmount(self) -> Callable[[str], None]:
+        with self._lock:
+            if self._unmount is None:
+                self._load_from_module()
+            return self._unmount
+        
+    @property
+    def params_converter(self) -> Callable[[str, dict | None], dict | None]:
+        with self._lock:
+            if self._params_converter is None:
+                self._load_from_module()
+            return self._params_converter
+
+    @property
+    def icrm_name(self) -> str:
+        return self._icrm_class.__name__
     
     @property
     def namespace(self) -> str:

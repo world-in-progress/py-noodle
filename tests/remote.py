@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.pynoodle import noodle, NOODLE_INIT
+from src.pynoodle import noodle, NOODLE_INIT, NOODLE_TERMINATE
 from tests.module.names import INames
 
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +25,8 @@ async def lifespan(app: FastAPI):
         crm.add_name('Charlie')
     
     yield
+    
+    NOODLE_TERMINATE()
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
