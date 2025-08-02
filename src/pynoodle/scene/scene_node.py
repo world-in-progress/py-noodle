@@ -114,7 +114,7 @@ class SceneNode(ISceneNode[T]):
         self._crm_params = record.launch_params
         self._crm_class = record.scenario_node.crm_class
         self._import_script = f'from {record.scenario_node.module} import CRM\n'
-        self._lock = RWLock(self._node_key, lock_type, timeout, retry_interval)
+        self._lock = RWLock(self._node_key, access_mode, timeout, retry_interval)
     
     @property
     def lock(self) -> RWLock:

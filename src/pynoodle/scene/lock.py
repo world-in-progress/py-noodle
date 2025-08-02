@@ -5,7 +5,7 @@ import asyncio
 import logging
 import sqlite3
 import threading
-from pathlib import Path
+import c_two as cc
 from typing import Literal
 
 from ..config import settings
@@ -16,15 +16,15 @@ class RWLock:
     def __init__(
         self,
         node_key: str,
-        lock_type: Literal['r', 'w'],
+        access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None,
         retry_interval: float = 1.0
     ):
-        if lock_type not in ['r', 'w']:
-            raise ValueError("lock_type must be either 'r' for read or 'w' for write")
+        if access_mode not in ['lr', 'lw', 'pr', 'pw']:
+            raise ValueError("access mode must be either 'lr' for local read, 'lw' for local write, 'pr' for process-level read, or 'pw' for process-level write")
 
         self.node_key = node_key
-        self.lock_type = lock_type
+        self.access_mode = access_mode
         self.retry_interval = retry_interval
         self.timeout = timeout if (timeout is not None and timeout >= 0) else None
         self.id = f'pid_{os.getpid()}_tid_{threading.get_ident()}_{uuid.uuid4().hex}'
@@ -32,6 +32,14 @@ class RWLock:
     def _get_connection(self):
         """Creates a new database connection."""
         return sqlite3.connect(settings.SQLITE_PATH)
+    
+    @property
+    def access_level(self) -> str:
+        return self.access_mode[0]
+    
+    @property
+    def lock_type(self) -> str:
+        return self.access_mode[1]
     
     @staticmethod
     def init():
@@ -41,6 +49,7 @@ class RWLock:
                     node_key TEXT NOT NULL,
                     lock_type TEXT NOT NULL,
                     lock_id TEXT PRIMARY KEY,
+                    access_level TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -65,6 +74,28 @@ class RWLock:
         """Remove a lock with the given ID."""
         with sqlite3.connect(settings.SQLITE_PATH) as conn:
             conn.execute('DELETE FROM locks WHERE lock_id = ?', (lock_id,))
+            conn.commit()
+    
+    @staticmethod
+    def release_all_process_servers() -> None:
+        """
+        Release all process-level locks by shutting down their associated CRM servers.
+        
+        This function queries the database for all existing locks and specifically handles
+        process-level locks (access_level == 'p') by attempting to shutdown their 
+        corresponding CRM servers. Local-level locks are ignored in this operation.
+        """
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
+            cursor = conn.execute('SELECT lock_id, node_key FROM locks')
+            for lock_id, node_key, access_level in cursor.fetchall():
+                # For process-level locks, shutdown the CRM server
+                if access_level == 'p':
+                    server_address = f'memory://{node_key.replace(".", "_")}_{lock_id}'
+                    try:
+                        if not cc.rpc.Client.shutdown(server_address, -1.0):
+                            raise RuntimeError(f'Failed to shutdown CRM server for node {node_key}')
+                    except Exception as e:
+                        logger.error(f'{e}')
             conn.commit()
     
     @staticmethod
@@ -105,8 +136,8 @@ class RWLock:
                 
                 if can_acquire:
                     cursor.execute(
-                        'INSERT INTO locks (node_key, lock_type, lock_id) VALUES (?, ?, ?)',
-                        (self.node_key, self.lock_type, self.id)
+                        'INSERT INTO locks (node_key, lock_type, lock_id, access_level) VALUES (?, ?, ?, ?)',
+                        (self.node_key, self.lock_type, self.id, self.access_level)
                     )
                     conn.commit()
                     return
@@ -163,8 +194,8 @@ class RWLock:
 
                 if can_acquire:
                     cursor.execute(
-                        'INSERT INTO locks (node_key, lock_type, lock_id) VALUES (?, ?, ?)',
-                        (self.node_key, self.lock_type, self.id)
+                        'INSERT INTO locks (node_key, lock_type, lock_id, access_level) VALUES (?, ?, ?, ?)',
+                        (self.node_key, self.lock_type, self.id, self.access_level)
                     )
                     conn.commit()
                     return

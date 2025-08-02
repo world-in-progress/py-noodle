@@ -27,10 +27,13 @@ def NOODLE_INIT(app: FastAPI | None = None) -> None:
 def NOODLE_TERMINATE() -> None:
     """Terminate Noodle CRM servers running in process level and clean up locks."""
     
-    # Forcefully shutdown all nodes' CRM servers running in process level
+    # Shutdown all process-level CRM servers gracefully
+    RWLock.release_all_process_servers()
+    
+    # Forcefully shutdown all nodes' CRM servers running in process level if graceful shutdown fails
     # Nodes's CRM servers running in local level will be automatically shutdown when the process exits
     if settings.MEMORY_TEMP_PATH.exists():
         shutil.rmtree(settings.MEMORY_TEMP_PATH)
-    
-    # Clear all locks
+        
+    # Clear all locks in the database
     RWLock.clear_all()
