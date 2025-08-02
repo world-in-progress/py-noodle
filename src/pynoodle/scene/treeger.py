@@ -411,7 +411,8 @@ class Treeger:
                     continue
                 # If the node is active, skip it
                 if RWLock.is_node_active(current_key):
-                    continue
+                    message = f'Node "{current_key}" is active, cannot unmount node "{node_key}" recursively. Deactivate node "{current_key}" first, then retry unmounting.'
+                    raise ValueError(message)
                 else:
                     nodes_to_delete.append(current_key)
                 

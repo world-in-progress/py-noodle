@@ -86,7 +86,7 @@ class RWLock:
         corresponding CRM servers. Local-level locks are ignored in this operation.
         """
         with sqlite3.connect(settings.SQLITE_PATH) as conn:
-            cursor = conn.execute('SELECT lock_id, node_key FROM locks')
+            cursor = conn.execute('SELECT lock_id, node_key, access_level FROM locks')
             for lock_id, node_key, access_level in cursor.fetchall():
                 # For process-level locks, shutdown the CRM server
                 if access_level == 'p':

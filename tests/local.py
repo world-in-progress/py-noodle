@@ -18,24 +18,24 @@ if __name__ == '__main__':
     noodle.mount_node('root')
     
     # Mount local nodes: root.names
-    noodle.mount_node('root.names', 'names')
+    # noodle.mount_node('root.names', 'names')
     
     # Proxy remote nodes http://127.0.0.1:8000::nameSet as root.names
     # noodle.proxy_node('root.names', 'names', 'http://127.0.0.1:8000', 'nameSet')
     
     # Mount local nodes: root.hello, dependent on local node root.names
-    noodle.mount_node('root.hello', 'hello', launch_params={'names_node_key': 'root.names'}, dependent_node_keys_or_infos=['root.names'])
+    # noodle.mount_node('root.hello', 'hello', launch_params={'names_node_key': 'root.names'}, dependent_node_keys_or_infos=['root.names'])
     
     # Mount local nodes: root.hello, dependent on remote node http://127.0.0.1:8000::nameSet
-    # noodle.mount_node('root.hello', 'hello', launch_params={'names_node_key': 'http://127.0.0.1:8000::nameSet'}, dependent_node_keys_or_infos=['http://127.0.0.1:8000::nameSet'])
+    noodle.mount_node('root.hello', 'hello', launch_params={'names_node_key': 'http://127.0.0.1:8000::nameSet'}, dependent_node_keys_or_infos=['http://127.0.0.1:8000::nameSet'])
 
     print('\n----- Connect to nodes ------\n')
 
     # Connect to remote node http://127.0.0.1:8000::nameSet
-    # with noodle.connect_node(INames, 'http://127.0.0.1:8000::nameSet', 'lw') as names:
+    with noodle.connect_node(INames, 'http://127.0.0.1:8000::nameSet', 'lw') as names:
     
     # Connect to local node root.names
-    with noodle.connect_node(INames, 'root.names', 'lw') as names:
+    # with noodle.connect_node(INames, 'root.names', 'lw') as names:
         names.crm.add_name('Alice')
         names.crm.add_name('Bob')
         names.crm.add_name('Charlie')
