@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.pynoodle import noodle, NOODLE_INIT, NOODLE_TERMINATE
+from pynoodle import noodle, NOODLE_INIT, NOODLE_TERMINATE
 from tests.module.names import INames
 
 logging.basicConfig(level=logging.INFO)

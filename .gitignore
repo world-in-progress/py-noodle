@@ -211,3 +211,5 @@ __marimo__/
 *.db
 *.json
 resources/
+tests/module/hello/
+tests/module/names/

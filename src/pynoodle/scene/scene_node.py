@@ -205,13 +205,15 @@ class SceneNode(ISceneNode[T]):
     
     def terminate(self):
         with self._thread_lock:
-            # For Local-level CRM, terminate it manually
-            if self._access_level == 'l':
-                self._crm.terminate()
-            
-            # For Process-level CRM, just shutdown the C-Two client
-            elif self._access_level == 'p':
-                self._crm.client.shutdown(self.server_address, -1.0)
+            if not self._crm is None:
+                # For Local-level CRM, terminate it manually
+                if self._access_level == 'l':
+                    self._crm.terminate()
+                
+                # For Process-level CRM, just shutdown the C-Two client
+                elif self._access_level == 'p':
+                    self._crm.client.terminate()
+                    cc.rpc.Client.shutdown(self.server_address, -1.0)
                 
             # Release the lock
             self._lock.release()
@@ -297,6 +299,8 @@ class RemoteSceneNode(ISceneNode[T]):
     
     def terminate(self):
         with self._thread_lock:
+            self._crm.client.terminate()
+            
             # Refer to deactivate_node() in src/pynoodle/endpoints/proxy.py for more details about the deactivate API
             deactivate_api = f'{self.server_address}&lock_id={self._remote_lock_id}'
             response = requests.delete(deactivate_api)
@@ -359,6 +363,8 @@ class RemoteSceneNodeProxy(SceneNode[T]):
     
     def terminate(self):
         with self._thread_lock:
+            self._crm.client.terminate()
+            
             # Refer to deactivate_node() in src/pynoodle/endpoints/proxy.py for more details about the deactivate API
             deactivate_api = f'{self.server_address}&lock_id={self._remote_lock_id}'
             response = requests.delete(deactivate_api)

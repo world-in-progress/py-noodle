@@ -1,4 +1,4 @@
-from src.pynoodle import icrm
+from pynoodle import icrm
 
 @icrm('test')
 class INames:

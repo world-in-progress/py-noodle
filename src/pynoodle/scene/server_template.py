@@ -27,6 +27,7 @@ if __name__ == '__main__':
 
     logger.info(f'Starting CRM Server for node {node_key}...')
     server.start()
+    
     logger.info(f'CRM Server for node {node_key} started at %s', server_address)
     try:
         server.wait_for_termination()

@@ -1,4 +1,4 @@
-module_root: tests.module
+module_root: tests.module.src
 scenario_nodes:
   - name: names
   - name: hello

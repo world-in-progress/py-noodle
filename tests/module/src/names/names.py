@@ -1,8 +1,8 @@
 import json
 import logging
 from pathlib import Path
+from pynoodle import crm
 
-from src.pynoodle import crm
 from .inames import INames
 
 logger = logging.getLogger(__name__)
