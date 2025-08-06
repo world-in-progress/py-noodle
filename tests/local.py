@@ -6,8 +6,8 @@ test_module_path = Path.cwd()
 sys.path.insert(0, str(test_module_path))
 
 from pynoodle import noodle, NOODLE_INIT, NOODLE_TERMINATE
-from tests.module.hello import IHello
-from tests.module.names import INames
+from tests.icrms.ihello import IHello
+from tests.icrms.inames import INames
 
 logging.basicConfig(level=logging.INFO)
 

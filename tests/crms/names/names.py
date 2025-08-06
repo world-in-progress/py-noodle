@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from pynoodle import crm
 
-from .inames import INames
+from tests.icrms.inames import INames
 
 logger = logging.getLogger(__name__)
 

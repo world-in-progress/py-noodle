@@ -1,4 +1,4 @@
-from .ihello import IHello
+from tests.icrms.ihello import IHello
 from .hello import Hello
 
 ICRM = IHello

@@ -2,6 +2,7 @@ import yaml
 import logging
 import threading
 from pathlib import Path
+from fastapi import APIRouter
 from dataclasses import dataclass
 from typing import TypeVar, Type, Callable
 
@@ -19,6 +20,7 @@ class ScenarioNode:
     
     _crm_class: Type[T] = None
     _icrm_class: Type[T] = None
+    _endpoint: APIRouter = None
     _mount: Callable[[str], None] = None
     _unmount: Callable[[str], None] = None
     _lock: threading.Lock = threading.Lock()
@@ -48,6 +50,8 @@ class ScenarioNode:
         if not self._params_converter:
             # Use an empty callable if PARAM_CONVERTER is not defined (no warning, because it might be optional)
             self._params_converter = lambda x, y: y
+        
+        self._endpoint = getattr(m, 'router', None)
     
     @property
     def crm_class(self) -> Type[T]:
@@ -95,6 +99,13 @@ class ScenarioNode:
     @property
     def icrm_tag(self) -> str:
         return f'{self.namespace}/{self.icrm_name}'
+    
+    @property
+    def endpoint(self) -> APIRouter | None:
+        with self._lock:
+            if self._endpoint is None:
+                self._load_from_module()
+            return self._endpoint
 
 class Scenario:
     def __init__(self):
@@ -133,6 +144,9 @@ class Scenario:
         if scenario_node_name not in self.graph:
             return None
         return self.graph[scenario_node_name]
+    
+    def __iter__(self):
+        return iter(self.graph.values())
 
     def get_icrm_tag(self, scenario_node_name: str) -> str | None:
         node = self.graph.get(scenario_node_name)
