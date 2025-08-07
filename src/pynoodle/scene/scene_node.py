@@ -276,10 +276,12 @@ class RemoteSceneNode(ISceneNode[T]):
             if self._crm is not None:
                 return self._crm
             
+            icrm_tag = f'{self._icrm_class.__namespace__}/{self._icrm_class.__name__}/{self._icrm_class.__version__}'
+            
             # Get the remote lock from the remote Noodle
             # Refer to activate_node() in src/pynoodle/endpoints/proxy.py for more details about the lock API
             lock_api = (
-                f'{self.server_address}&icrm_tag={self._icrm_class.__namespace__}/{self._icrm_class.__name__}&lock_type={self._lock_type}&retry_interval={self._retry_interval}' \
+                f'{self.server_address}&icrm_tag={icrm_tag}&lock_type={self._lock_type}&retry_interval={self._retry_interval}' \
                 + (f'&timeout={self._timeout}' if self._timeout is not None else '')
             )
             response = requests.get(lock_api)
@@ -339,11 +341,13 @@ class RemoteSceneNodeProxy(SceneNode[T]):
                 return self._crm
             
             self._lock.acquire()
-            
+
+            icrm_tag = f'{self._icrm_class.__namespace__}/{self._icrm_class.__name__}/{self._icrm_class.__version__}'
+
             # Get the twin lock from the remote Noodle
             # Refer to activate_node() in src/pynoodle/endpoints/proxy.py for more details about the lock API
             lock_api = (
-                f'{self.server_address}&icrm_tag={self._icrm_class.__namespace__}/{self._icrm_class.__name__}&lock_type={self._lock.lock_type}&retry_interval={self._lock.retry_interval}' \
+                f'{self.server_address}&icrm_tag={icrm_tag}&lock_type={self._lock.lock_type}&retry_interval={self._lock.retry_interval}' \
                 + (f'&timeout={self._lock.timeout}' if self._lock.timeout is not None else '')
             )
             response = requests.get(lock_api)

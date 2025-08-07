@@ -7,13 +7,20 @@ logger = logging.getLogger(__name__)
 
 transferable = cc.transferable
 
-def icrm(namespace: str) -> T:
+def icrm(namespace: str, version: str) -> T:
     if not namespace:
         raise ValueError('Namespace of ICRM cannot be empty.')
+    if not version:
+        raise ValueError('Version of ICRM cannot be empty (version example: "1.0.0").')
+    if not isinstance(version, str) or not version.count('.') == 2:
+        raise ValueError('Version must be a string in the format "major.minor.patch".')
     
     def wrapper(cls: T) -> T:
-        cls.__namespace__ = namespace
-        return cc.icrm(cls)
+        new_cls = cc.icrm(cls)
+        new_cls.__version__ = version
+        new_cls.__namespace__ = namespace
+        return new_cls
+    
     return wrapper
 
 def crm(cls: T) -> T:

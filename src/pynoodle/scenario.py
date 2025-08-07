@@ -91,23 +91,24 @@ class ScenarioNode:
             return self._params_converter
 
     @property
-    def icrm_name(self) -> str:
-        return self._icrm_class.__name__
-    
-    @property
-    def namespace(self) -> str:
-        return self.icrm_class.__namespace__
-    
-    @property
-    def icrm_tag(self) -> str:
-        return f'{self.namespace}/{self.icrm_name}'
-    
-    @property
     def endpoint(self) -> APIRouter | None:
         with self._lock:
             if self._endpoint is None:
                 self._load_from_module()
             return self._endpoint
+    
+    @property
+    def icrm_tag(self) -> str:
+        cls = self.icrm_class
+        
+        name = cls.__name__
+        version = cls.__version__
+        namespace = cls.__namespace__
+        
+        if not namespace or not name or not version:
+            raise ValueError(f'ICRM class {cls.__name__} is missing namespace, name, or version attributes.')
+        
+        return f'{namespace}/{name}/{version}'
 
 class Scenario:
     def __init__(self):

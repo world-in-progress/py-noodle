@@ -1,6 +1,6 @@
 from pynoodle import icrm
 
-@icrm('test')
+@icrm('test', '0.0.1')
 class INames:
     def get_names(self) -> list[str]:
         """Return a list of names."""
