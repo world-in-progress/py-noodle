@@ -13,45 +13,47 @@ T = TypeVar('T')
 logger = logging.getLogger(__name__)
 
 @dataclass
+class RawScenarioNode:
+    CRM: Type[T] = None
+    ICRM: Type[T] = None
+    MOUNT: Callable[[str], None] = lambda x: None
+    UNMOUNT: Callable[[str], None] = lambda x: None
+    PARAM_CONVERTER: Callable[[str, dict | None], dict | None] = lambda x, y: y
+    ENDPOINT: APIRouter | None = None
+    
+    def __post_init__(self):
+        if not self.ICRM:
+            raise ImportError(f'ICRM class not found in module {self.module}')
+        if not self.CRM:
+            self.CRM = self.ICRM
+
+@dataclass
 class ScenarioNode:
     name: str
     module: str
     dependencies: list['ScenarioNode']
+    
+    _lock: threading.Lock = threading.Lock()
     
     _crm_class: Type[T] = None
     _icrm_class: Type[T] = None
     _endpoint: APIRouter = None
     _mount: Callable[[str], None] = None
     _unmount: Callable[[str], None] = None
-    _lock: threading.Lock = threading.Lock()
     _params_converter: Callable[[str, dict | None], dict | None] = None
     
     def _load_from_module(self):
         m = __import__(self.module, fromlist=[''])
-        self._icrm_class = getattr(m, 'ICRM', None)
-        if not self._icrm_class:
-            raise ImportError(f'ICRM class not found in module {self.module}')
+        raw: RawScenarioNode = getattr(m, 'RAW', None)
+        if not raw:
+            raise ImportError(f'RawScenarioNode class not found in module {self.module}')
         
-        self._crm_class = getattr(m, 'CRM', None)
-        if not self._crm_class:
-            self._crm_class = self._icrm_class
-
-        self._mount = getattr(m, 'MOUNT', None)
-        if not self._mount:
-            # Use an empty callable if MOUNT is not defined (no warning, because it might be optional)
-            self._mount = lambda x: None
-
-        self._unmount = getattr(m, 'UNMOUNT', None)
-        if not self._unmount:
-            # Use an empty callable if UNMOUNT is not defined (no warning, because it might be optional)
-            self._unmount = lambda x: None
-        
-        self._params_converter = getattr(m, 'PARAM_CONVERTER', None)
-        if not self._params_converter:
-            # Use an empty callable if PARAM_CONVERTER is not defined (no warning, because it might be optional)
-            self._params_converter = lambda x, y: y
-        
-        self._endpoint = getattr(m, 'router', None)
+        self._mount = raw.MOUNT
+        self._crm_class = raw.CRM
+        self._icrm_class = raw.ICRM
+        self._unmount = raw.UNMOUNT
+        self._endpoint = raw.ENDPOINT
+        self._params_converter = raw.PARAM_CONVERTER
     
     @property
     def crm_class(self) -> Type[T]:

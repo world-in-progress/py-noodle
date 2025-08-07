@@ -1,9 +1,6 @@
-import logging
 from pynoodle import crm, noodle
 from tests.icrms.ihello import IHello
 from tests.icrms.inames import INames
-
-logger = logging.getLogger(__name__)
 
 @crm
 class Hello(IHello):
