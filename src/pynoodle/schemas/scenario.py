@@ -5,5 +5,6 @@ class ScenarioNodeDescription(BaseModel):
     dependencies: list[str] | None = None
 
 class ScenarioConfiguration(BaseModel):
-    module_root: str | None = None
+    module_prefix: str | None = None
+    module_postfix: str | None = None
     scenario_nodes: list[ScenarioNodeDescription]

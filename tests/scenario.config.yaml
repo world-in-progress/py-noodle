@@ -1,4 +1,5 @@
-module_root: tests.crms
+module_prefix: tests.crms
+module_postfix: null
 scenario_nodes:
   - name: names
   - name: hello
