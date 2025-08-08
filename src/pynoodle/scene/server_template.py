@@ -22,7 +22,7 @@ if __name__ == '__main__':
     server_address: str = args.server_address
     crm_params = json.loads(args.params) if args.params else {}
 
-    crm = CRM(**crm_params)
+    crm = RAW.CRM(**crm_params)
     server = cc.rpc.Server(server_address, crm, node_key)
 
     logger.info(f'Starting CRM Server for node {node_key}...')
