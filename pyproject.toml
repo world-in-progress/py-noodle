@@ -1,6 +1,6 @@
 [project]
 name = "py-noodle"
-version = "0.1.0"
+version = "0.1.1"
 description = "Node-oriented open data linking environment powered by C-Two."
 readme = "README.md"
 requires-python = ">=3.10"
