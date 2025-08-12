@@ -113,10 +113,7 @@ class ScenarioNode:
 class Scenario:
     def __init__(self):
         # Read configuration
-        configuration_path = Path(settings.NOODLE_CONFIG_PATH)
-        if not configuration_path.is_absolute():
-            configuration_path = Path.cwd() / configuration_path
-        with open(configuration_path, 'r') as f:
+        with open(settings.NOODLE_CONFIG_PATH, 'r') as f:
             config_data = yaml.safe_load(f)
             
         # Parse scenario graph

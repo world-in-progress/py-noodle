@@ -7,13 +7,25 @@ class Settings(BaseSettings):
     SERVER_PORT: int = 8000
     
     # Noodle CRM settings
-    NOODLE_CONFIG_PATH: str = './noodle.config.yaml'
-    
+    NOODLE_CONFIG_PATH: Path = Path('./noodle.config.yaml')
+
     # Scene database settings
     SQLITE_PATH: Path
     
     # Memory temp directory settings
     MEMORY_TEMP_PATH: Path = Path('./temp')
+    
+    @field_validator('NOODLE_CONFIG_PATH')
+    @classmethod
+    def validate_noodle_config_path(cls, v: str) -> Path:
+        path = Path(v)
+        if not path.is_absolute():
+            path = Path.cwd() / path
+            
+        if not path.exists():
+            raise FileNotFoundError(f'No such file or directory: {path}')
+        
+        return path
 
     @field_validator('SQLITE_PATH', 'MEMORY_TEMP_PATH', mode='before')
     @classmethod
