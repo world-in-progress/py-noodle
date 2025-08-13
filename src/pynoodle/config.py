@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     # Noodle CRM settings
     NOODLE_CONFIG_PATH: Path = Path('./noodle.config.yaml')
 
+    # Resource tree configuration
+    ROOT_SCENARIO: str = ''
+
     # Scene database settings
     SQLITE_PATH: Path
     

@@ -30,6 +30,13 @@ def NOODLE_INIT(app: FastAPI | None = None) -> None:
         else:
             logger.debug('No FastAPI app provided, Noodle endpoints will not be registered.')
 
+        # Call after_noodle_init hooks if ROOT_SCENARIO is set
+        if settings.ROOT_SCENARIO:
+            scenario_node = noodle.scenario[settings.ROOT_SCENARIO]
+            if scenario_node is None:
+                raise ImportError(f'Scenario node {settings.ROOT_SCENARIO} not found in scenario graph.')
+            scenario_node.after_noodle_init()
+
 def NOODLE_TERMINATE() -> None:
     """Terminate Noodle CRM servers running in process level and clean up locks."""
     

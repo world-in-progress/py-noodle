@@ -16,11 +16,12 @@ logger = logging.getLogger(__name__)
 class RawScenarioNode:
     CRM: Type[T] = None
     ICRM: Type[T] = None
+    ENDPOINT: APIRouter | None = None
     MOUNT: Callable[[str], None] = lambda x: None
     UNMOUNT: Callable[[str], None] = lambda x: None
+    AFTER_NOODLE_INIT: Callable[[], None] = lambda: None
     PARAM_CONVERTER: Callable[[str, dict | None], dict | None] = lambda x, y: y
-    ENDPOINT: APIRouter | None = None
-    
+
     def __post_init__(self):
         if not self.ICRM:
             raise ImportError(f'ICRM class not found in module {self.module}')
@@ -40,6 +41,7 @@ class ScenarioNode:
     _endpoint: APIRouter = None
     _mount: Callable[[str], None] = None
     _unmount: Callable[[str], None] = None
+    _after_noodle_init: Callable[[], None] = None
     _params_converter: Callable[[str, dict | None], dict | None] = None
     
     def _load_from_module(self):
@@ -54,6 +56,7 @@ class ScenarioNode:
         self._unmount = raw.UNMOUNT
         self._endpoint = raw.ENDPOINT
         self._params_converter = raw.PARAM_CONVERTER
+        self._after_noodle_init = raw.AFTER_NOODLE_INIT
     
     @property
     def crm_class(self) -> Type[T]:
@@ -96,7 +99,14 @@ class ScenarioNode:
             if self._endpoint is None:
                 self._load_from_module()
             return self._endpoint
-    
+
+    @property
+    def after_noodle_init(self) -> Callable[[], None]:
+        with self._lock:
+            if self._after_noodle_init is None:
+                self._load_from_module()
+            return self._after_noodle_init
+
     @property
     def icrm_tag(self) -> str:
         cls = self.icrm_class
@@ -123,7 +133,7 @@ class Scenario:
         
         # - Firstly, create all nodes
         module_prefix = f'{config.module_prefix}.' if config.module_prefix else ''
-        module_postfix = f'{config.module_postfix}' if config.module_postfix else ''
+        module_postfix = f'.{config.module_postfix}' if config.module_postfix else ''
         for node_description in config.scenario_nodes:
             node = ScenarioNode(
                 name=node_description.name,
