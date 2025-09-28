@@ -56,12 +56,26 @@ class RWLock:
             conn.commit()
     
     @staticmethod
-    def is_node_active(node_key: str) -> bool:
+    def is_node_locked(node_key: str) -> bool:
         """Check if a node is currently active."""
         with sqlite3.connect(settings.SQLITE_PATH) as conn:
             cursor = conn.execute('SELECT 1 FROM locks WHERE node_key = ?', (node_key,))
             return cursor.fetchone() is not None
     
+    @staticmethod
+    def lock_node(node_key: str, lock_type: Literal['r', 'w'], access_level: Literal['l', 'p'], timeout: float | None = None, retry_interval: float = 1.0) -> 'RWLock':
+        """Acquire a lock for a node."""
+        lock = RWLock(node_key, access_level + lock_type, timeout, retry_interval)
+        lock.acquire()
+        return lock
+    
+    @staticmethod
+    def unlock_nodes(node_keys: list[str]) -> None:
+        """Release the locks for a list of nodes."""
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
+            conn.execute('DELETE FROM locks WHERE node_key IN ({})'.format(', '.join('?' for _ in node_keys)), node_keys)
+            conn.commit()
+
     @staticmethod
     def has_lock(lock_id: str) -> bool:
         """Check if a lock with the given ID exists."""

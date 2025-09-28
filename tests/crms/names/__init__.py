@@ -1,15 +1,10 @@
-from pynoodle import RawScenarioNode
+from pynoodle import ResourceNodeTemplate
 
 from .names import Names
-from tests.icrms.inames import INames
-from .endpoint import router
-from .hooks import MOUNT, UNMOUNT, PARAM_CONVERTER
+from .hooks import MOUNT, UNMOUNT
 
-RAW = RawScenarioNode(
-    CRM=Names,
-    ICRM=INames,
-    MOUNT=MOUNT,
-    UNMOUNT=UNMOUNT,
-    PARAM_CONVERTER=PARAM_CONVERTER,
-    ENDPOINT=router
+template = ResourceNodeTemplate(
+    crm=Names,
+    mount=MOUNT,
+    unmount=UNMOUNT
 )

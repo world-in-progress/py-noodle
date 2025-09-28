@@ -2,12 +2,12 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from ..noodle import noodle
-from ..schemas.scene import SceneNodeInfo
+from ..schemas.scene import ResourceNodeInfo
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.get('/', response_model=SceneNodeInfo)
+@router.get('/', response_model=ResourceNodeInfo)
 def get_node_info(node_key: str, child_start_index: int = 0, child_end_index: int = None):
     try:
         node_info = noodle.get_node_info(node_key, child_start_index, child_end_index)

@@ -23,7 +23,7 @@ async def activate_node(node_key: str, icrm_tag: str, lock_type: Literal['r', 'w
             raise HTTPException(status_code=404, detail=f'Node {node_key} not found')
         
         # Validate the ICRM tag
-        node_icrm_tag = noodle.scenario.get_icrm_tag(node_info.scenario_node_name)
+        node_icrm_tag = noodle.module_cache.get_icrm_tag(node_info.scenario_node_name)
         if node_icrm_tag != icrm_tag:
             raise HTTPException(status_code=404, detail=f'ICRM tag "{icrm_tag}" not match node "{node_key}", expected "{node_icrm_tag}"')
 

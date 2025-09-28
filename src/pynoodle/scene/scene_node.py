@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from typing import TypeVar, Type, Generic, Literal
 
 from .lock import RWLock
-from ..scenario import ScenarioNode
 from ..schemas.lock import LockInfo
+from ..module_cache import ResourceNodeTemplateModule
 from .server_template import CRM_LAUNCHER_IMPORT_TEMPLATE, CRM_LAUNCHER_RUNNING_TEMPLATE
 
 T = TypeVar('T')
@@ -27,29 +27,29 @@ class NodeMessage(BaseModel):
     action: str
 
 @dataclass
-class SceneNodeRecord:
+class ResourceNodeRecord:
     node_key: str
-    scenario_node: ScenarioNode | None   # None if this is a resource set node, not a resource node
-    launch_params: str | None = None
     access_info: str | None = None
+    launch_params: str | None = None
+    template: ResourceNodeTemplateModule | None = None   # None if this is a resource set node, not a resource node
     
     parent_key: str | None = None
-    children: list['SceneNodeRecord'] = field(default_factory=list)
+    children: list['ResourceNodeRecord'] = field(default_factory=list)
     
-    def add_child(self, child: 'SceneNodeRecord'):
+    def add_child(self, child: 'ResourceNodeRecord'):
         self.children.append(child)
         self.children.sort(key=lambda child: child.node_key.split('.')[-1].lower())  # sort children by their name
         child.parent_key = self.node_key
     
-    def add_children(self, children: list['SceneNodeRecord']):
+    def add_children(self, children: list['ResourceNodeRecord']):
         for child in children:
             self.add_child(child)
     
     @property
-    def is_set(self):
-        return self.scenario_node is None
+    def has_children(self):
+        return len(self.children) > 0
 
-class ISceneNode(Generic[T], metaclass=ABCMeta):
+class IResourceNode(Generic[T], metaclass=ABCMeta):
     @property
     @abstractmethod
     def lock(self) -> RWLock:
@@ -88,10 +88,11 @@ class ISceneNode(Generic[T], metaclass=ABCMeta):
         """Terminate the CRM server and release resources"""
         raise NotImplementedError
         
-class SceneNode(ISceneNode[T]):
+class ResourceNode(IResourceNode[T]):
     def __init__(
         self,
-        icrm_class: Type[T], record: SceneNodeRecord,   # icrm_class only used for type hinting
+        icrm_class: Type[T],
+        record: ResourceNodeRecord,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None, retry_interval: float = 0.1
     ):
@@ -109,12 +110,12 @@ class SceneNode(ISceneNode[T]):
 
         self._thread_lock = threading.RLock()
 
-        self._crm: T = None
         self._access_level = access_level
+        self._crm: T = record.template.crm
         self._crm_params = record.launch_params
-        self._crm_class = record.scenario_node.crm_class
-        self._import_script = f'from {record.scenario_node.module} import RAW\n'
+        self._icrm_tag: str = icrm_class.__tag__
         self._lock = RWLock(self._node_key, access_mode, timeout, retry_interval)
+        self._import_script = f'from {record.template.module_path} import template\n'
     
     @property
     def lock(self) -> RWLock:
@@ -158,6 +159,7 @@ class SceneNode(ISceneNode[T]):
                     sys.executable,
                     '-c',
                     scripts,
+                    '--icrm_tag', self._icrm_tag,
                     '--server_address', self.server_address,
                     '--node_key', self._node_key,
                     '--params', self._crm_params
@@ -181,7 +183,7 @@ class SceneNode(ISceneNode[T]):
 
             if self._access_level == 'l':
                 params = json.loads(self._crm_params) if self._crm_params else {}
-                self._crm = self._crm_class(**params)
+                self._crm = self._crm(**params)
                 return self._crm
             
             elif self._access_level == 'p':
@@ -196,7 +198,7 @@ class SceneNode(ISceneNode[T]):
                     count += 1
                 
                 # Create an ICRM instance related to the node CRM
-                self._crm = self._crm_class.__base__()
+                self._crm = self._crm.__base__()
                 
                 # Add a C-Two RPC client
                 client = cc.rpc.Client(self.server_address)
@@ -218,7 +220,7 @@ class SceneNode(ISceneNode[T]):
             # Release the lock
             self._lock.release()
 
-class RemoteSceneNode(ISceneNode[T]):
+class RemoteResourceNode(IResourceNode[T]):
     def __init__(
         self,
         icrm_class: Type[T], access_info: str,
@@ -309,17 +311,17 @@ class RemoteSceneNode(ISceneNode[T]):
             if response.status_code != 200:
                 raise RuntimeError(f'Failed to deactivate remote CRM server: {response.text}')
 
-class RemoteSceneNodeProxy(SceneNode[T]):
+class RemoteResourceNodeProxy(ResourceNode[T]):
     def __init__(
         self,
-        icrm_class: Type[T], record: SceneNodeRecord,
+        icrm_class: Type[T], record: ResourceNodeRecord,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None, retry_interval: float = 0.1
     ):
         super().__init__(icrm_class, record, access_mode, timeout, retry_interval)
         self._remote_url, self._remote_key = record.access_info.split('::')
         self._remote_lock_id: str | None = None
-        self._icrm_class: Type[T] = record.scenario_node.icrm_class
+        self._icrm_class: Type[T] = record.template.icrm_class
 
     @property
     def server_scheme(self) -> Literal['http']:

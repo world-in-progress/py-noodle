@@ -22,7 +22,7 @@ def NOODLE_INIT(app: FastAPI | None = None) -> None:
         # Register Noodle endpoints to the FastAPI app
         if app is not None:
             app.include_router(router, prefix='/noodle', tags=['noodle'])
-            for scenario_node in noodle.scenario:
+            for scenario_node in noodle.module_cache:
                 endpoint = scenario_node.endpoint
                 if endpoint is not None:
                     app.include_router(endpoint, prefix='/noodle')
@@ -32,7 +32,7 @@ def NOODLE_INIT(app: FastAPI | None = None) -> None:
 
         # Call after_noodle_init hooks if ROOT_SCENARIO is set
         if settings.ROOT_SCENARIO:
-            scenario_node = noodle.scenario[settings.ROOT_SCENARIO]
+            scenario_node = noodle.module_cache[settings.ROOT_SCENARIO]
             if scenario_node is None:
                 raise ImportError(f'Scenario node {settings.ROOT_SCENARIO} not found in scenario graph.')
             scenario_node.after_noodle_init()

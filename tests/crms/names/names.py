@@ -1,14 +1,10 @@
 import json
 import logging
 from pathlib import Path
-from pynoodle import crm
-
-from tests.icrms.inames import INames
 
 logger = logging.getLogger(__name__)
 
-@crm
-class Names(INames):
+class Names:
     def __init__(self, resource_space: str):
         self.name_path = Path(resource_space)
         if not self.name_path.exists():

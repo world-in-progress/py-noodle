@@ -5,7 +5,7 @@ description = "Node-oriented open data linking environment powered by C-Two."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "c-two>=0.2.5",
+    "c-two>=0.2.6",
     "fastapi>=0.116.1",
     "pyyaml>=6.0.2",
 ]
@@ -16,6 +16,7 @@ dev = [
 ]
 
 [tool.uv.sources]
+c-two = { git = "https://github.com/world-in-progress/c-two.git", branch = "main" }
 py-noodle = { workspace = true }
 
 [build-system]
