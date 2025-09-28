@@ -110,10 +110,11 @@ class ResourceNode(IResourceNode[T]):
 
         self._thread_lock = threading.RLock()
 
+        self._crm: T = None
+        self._icrm = icrm_class
         self._access_level = access_level
-        self._crm: T = record.template.crm
+        self._crm_class = record.template.crm
         self._crm_params = record.launch_params
-        self._icrm_tag: str = icrm_class.__tag__
         self._lock = RWLock(self._node_key, access_mode, timeout, retry_interval)
         self._import_script = f'from {record.template.module_path} import template\n'
     
@@ -159,7 +160,7 @@ class ResourceNode(IResourceNode[T]):
                     sys.executable,
                     '-c',
                     scripts,
-                    '--icrm_tag', self._icrm_tag,
+                    '--icrm_tag', self._icrm.__tag__,
                     '--server_address', self.server_address,
                     '--node_key', self._node_key,
                     '--params', self._crm_params
@@ -183,7 +184,7 @@ class ResourceNode(IResourceNode[T]):
 
             if self._access_level == 'l':
                 params = json.loads(self._crm_params) if self._crm_params else {}
-                self._crm = self._crm(**params)
+                self._crm = self._crm_class(**params)
                 return self._crm
             
             elif self._access_level == 'p':
@@ -198,7 +199,7 @@ class ResourceNode(IResourceNode[T]):
                     count += 1
                 
                 # Create an ICRM instance related to the node CRM
-                self._crm = self._crm.__base__()
+                self._crm = self._icrm()
                 
                 # Add a C-Two RPC client
                 client = cc.rpc.Client(self.server_address)

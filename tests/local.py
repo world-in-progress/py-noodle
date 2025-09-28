@@ -37,7 +37,13 @@ if __name__ == '__main__':
     
     # # Connect to local node root.names
     with noodle.connect_node(INames, 'root.names', 'pw') as names:
-        names.crm.add_name('Noodle')
+        names.crm.add_name('Noodle1')
+        print(names.crm.get_names())
+    
+    with noodle.connect_node(INames, 'root.names', 'lw') as names:
+        print(names.crm.get_names())
+        names.crm.remove_name('Noodle1')
+        print(names.crm.get_names())
 
     # with noodle.connect_node(IHello, 'root.hello', 'pr') as hello:
     #     print(hello.server_address)

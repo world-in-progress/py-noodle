@@ -25,7 +25,7 @@ if __name__ == '__main__':
     crm_params = json.loads(args.params) if args.params else {}
 
     crm = template.crm(**crm_params)
-    icrm = noodle.module_cache.icrms.get(args.icrm_tag)
+    icrm = noodle.module_cache.icrm_modules.get(args.icrm_tag).icrm
     config = cc.rpc.ServerConfig(
         name=f'CRM Server for node {node_key}',
         crm=crm,
@@ -35,6 +35,5 @@ if __name__ == '__main__':
     )
     
     server = cc.rpc.Server(config)
-    
     server.start()
 """
