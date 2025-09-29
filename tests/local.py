@@ -36,11 +36,11 @@ if __name__ == '__main__':
     # # with noodle.connect_node(INames, 'http://127.0.0.1:8000::nameSet', 'lw') as names:
     
     # # Connect to local node root.names
-    with noodle.connect_node(INames, 'root.names', 'pw') as names:
+    with noodle.connect_node(INames, 'http://127.0.0.1:8000::nameSet', 'pw') as names:
         names.crm.add_name('Noodle1')
         print(names.crm.get_names())
-    
-    with noodle.connect_node(INames, 'root.names', 'lw') as names:
+
+    with noodle.connect_node(INames, 'http://127.0.0.1:8000::nameSet', 'lw') as names:
         print(names.crm.get_names())
         names.crm.remove_name('Noodle1')
         print(names.crm.get_names())

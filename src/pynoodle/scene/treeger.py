@@ -359,7 +359,7 @@ class Treeger:
                 ResourceNodeInfo(
                     node_key=child.node_key,
                     access_info=child.access_info,
-                    scenario_node_name=child.template.name if child.template else None,
+                    template_name=child.template.name if child.template else None,
                     children=None   # do not focus on children info of children
                 )
             )
@@ -367,6 +367,6 @@ class Treeger:
         return ResourceNodeInfo(
             node_key=node_record.node_key,
             access_info=node_record.access_info,
-            scenario_node_name=node_record.template.name if node_record.template else None,
+            template_name=node_record.template.name if node_record.template else None,
             children=children_info if children_info else None
         )

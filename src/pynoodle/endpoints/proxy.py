@@ -20,15 +20,18 @@ async def activate_node(node_key: str, icrm_tag: str, lock_type: Literal['r', 'w
         # Try to get node information
         node_info = noodle.get_node_info(node_key)
         if not node_info:
-            raise HTTPException(status_code=404, detail=f'Node {node_key} not found')
+            raise HTTPException(status_code=404, detail=f'Node "{node_key}" not found')
+        if not node_info.template_name:
+            raise HTTPException(status_code=500, detail=f'Node "{node_key}" is a resource set, cannot be activated')
         
         # Validate the ICRM tag
-        node_icrm_tag = noodle.module_cache.get_icrm_tag(node_info.scenario_node_name)
-        if node_icrm_tag != icrm_tag:
-            raise HTTPException(status_code=404, detail=f'ICRM tag "{icrm_tag}" not match node "{node_key}", expected "{node_icrm_tag}"')
+        is_matched, error = noodle.module_cache.match(icrm_tag, node_info.template_name)
+        if not is_matched and error:
+            raise HTTPException(status_code=404, detail=f'ICRM tag "{icrm_tag}" not match template "{node_info.template_name}" of node "{node_key}", reason: {error}')
 
-        # Get the node (mock the icrm class not provided)
-        node = noodle.get_node(None, node_key, 'p' + lock_type, timeout, retry_interval)
+        # Get the node
+        icrm = noodle.module_cache.icrm_modules.get(icrm_tag).icrm
+        node = noodle.get_node(icrm, node_key, 'p' + lock_type, timeout, retry_interval)
 
         # Acquire the lock for the node asynchronously
         lock = node._lock

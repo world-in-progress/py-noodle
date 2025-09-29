@@ -132,16 +132,20 @@ class ModuleCache:
                 raise ValueError(f'Duplicate ResourceNodeTemplate name "{node_template_desc.name}" found in configuration.')
             self.templates[node_template_desc.name] = ResourceNodeTemplateModule(name=node_template_desc.name, module_path=node_template_desc.module_path)
 
-    def match(self, icrm_tag: str, node_template_name: str) -> bool:
+    def match(self, icrm_tag: str, node_template_name: str) -> tuple[bool, str | None]:
+        error: str | None = None
+        
         # Try to find the ICRM and CRM
         icrm_module = self.icrm_modules.get(icrm_tag, None)
         if not icrm_module:
-            raise ValueError(f'ICRM tag "{icrm_tag}" not found in noodle.')
+            error = f'ICRM tag "{icrm_tag}" not found in noodle.'
+            return False, error
         icrm = icrm_module.icrm
         
         template = self.templates.get(node_template_name, None)
         if not template:
-            raise ValueError(f'ResourceNodeTemplate "{node_template_name}" not found in noodle.')
+            error = f'ResourceNodeTemplate "{node_template_name}" not found in noodle.'
+            return False, error
         crm = template.crm
         
         # Get all public methods from ICRM (excluding private methods)
@@ -161,4 +165,7 @@ class ModuleCache:
         # Check for missing methods
         missing_methods = set(icrm_methods.keys()) - set(crm_methods.keys())
         if missing_methods:
-            raise ValueError(f'CRM "{node_template_name}" is missing methods required by ICRM "{icrm_tag}": {missing_methods}')
+            error = f'CRM "{node_template_name}" is missing methods required by ICRM "{icrm_tag}": {missing_methods}'
+            return False, error
+
+        return True, None

@@ -111,10 +111,11 @@ class ResourceNode(IResourceNode[T]):
         self._thread_lock = threading.RLock()
 
         self._crm: T = None
-        self._icrm = icrm_class
-        self._access_level = access_level
+        self._icrm_class = icrm_class
         self._crm_class = record.template.crm
         self._crm_params = record.launch_params
+        
+        self._access_level = access_level
         self._lock = RWLock(self._node_key, access_mode, timeout, retry_interval)
         self._import_script = f'from {record.template.module_path} import template\n'
     
@@ -160,7 +161,7 @@ class ResourceNode(IResourceNode[T]):
                     sys.executable,
                     '-c',
                     scripts,
-                    '--icrm_tag', self._icrm.__tag__,
+                    '--icrm_tag', self._icrm_class.__tag__,
                     '--server_address', self.server_address,
                     '--node_key', self._node_key,
                     '--params', self._crm_params
@@ -199,7 +200,7 @@ class ResourceNode(IResourceNode[T]):
                     count += 1
                 
                 # Create an ICRM instance related to the node CRM
-                self._crm = self._icrm()
+                self._crm = self._icrm_class()
                 
                 # Add a C-Two RPC client
                 client = cc.rpc.Client(self.server_address)
@@ -279,12 +280,10 @@ class RemoteResourceNode(IResourceNode[T]):
             if self._crm is not None:
                 return self._crm
             
-            icrm_tag = f'{self._icrm_class.__namespace__}/{self._icrm_class.__name__}/{self._icrm_class.__version__}'
-            
             # Get the remote lock from the remote Noodle
             # Refer to activate_node() in src/pynoodle/endpoints/proxy.py for more details about the lock API
             lock_api = (
-                f'{self.server_address}&icrm_tag={icrm_tag}&lock_type={self._lock_type}&retry_interval={self._retry_interval}' \
+                f'{self.server_address}&icrm_tag={self._icrm_class.__tag__}&lock_type={self._lock_type}&retry_interval={self._retry_interval}' \
                 + (f'&timeout={self._timeout}' if self._timeout is not None else '')
             )
             response = requests.get(lock_api)

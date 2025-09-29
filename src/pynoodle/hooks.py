@@ -22,10 +22,6 @@ def NOODLE_INIT(app: FastAPI | None = None) -> None:
         # Register Noodle endpoints to the FastAPI app
         if app is not None:
             app.include_router(router, prefix='/noodle', tags=['noodle'])
-            for scenario_node in noodle.module_cache:
-                endpoint = scenario_node.endpoint
-                if endpoint is not None:
-                    app.include_router(endpoint, prefix='/noodle')
 
         else:
             logger.debug('No FastAPI app provided, Noodle endpoints will not be registered.')
