@@ -350,16 +350,16 @@ class Treeger:
                     lock_info = LockInfo(**response.json())
                     if lock_info.node_key != remote_node_key:
                         raise ValueError(f'Lock {lock_id} does not belong to node {node_key}')
-                    if lock_info.lock_type != access_mode[1]:
-                        raise ValueError(f'Lock {lock_id} access mode "{lock_info.lock_type}" does not match requested access mode "{access_mode[1]}"')
+                    if access_mode[1] == 'w' and lock_info.lock_type == 'r':
+                        raise ValueError(f'Lock {lock_id} access mode "{lock_info.lock_type}" does not have write permission')
                     
                     server_address = f'{access_address}/noodle/proxy/?node_key={remote_node_key}&lock_id={lock_id}'
             else:
                 lock_info = RWLock.get_lock_info(lock_id)
                 if not lock_info or lock_info.node_key != node_key:
                     raise ValueError(f'Lock {lock_id} not found for node {node_key}')
-                if lock_info.lock_type != access_mode[1]:
-                    raise ValueError(f'Lock {lock_id} access mode "{lock_info.lock_type}" does not match requested access mode "{access_mode[1]}"')
+                if access_mode[1] == 'w' and lock_info.lock_type == 'r':
+                    raise ValueError(f'Lock {lock_id} access mode "{lock_info.lock_type}" does not have write permission')
                 
                 server_address = 'memory://' + node_key.replace('.', '_') + f'_{lock_id}'
             
