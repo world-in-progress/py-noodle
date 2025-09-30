@@ -40,7 +40,6 @@ async def activate_node(node_key: str, icrm_tag: str, lock_type: Literal['r', 'w
             retry_interval,
             activate_at_once=False # do not activate CRM server at once here, for we need to acquire the lock asynchronously to avoid blocking the event loop
         )
-        # node = noodle.get_node(icrm, node_key, 'p' + lock_type, timeout, retry_interval)
 
         # Acquire the lock for the node asynchronously
         lock = node.lock
@@ -58,7 +57,7 @@ async def activate_node(node_key: str, icrm_tag: str, lock_type: Literal['r', 'w
             await asyncio.sleep(0.1)
             count += 1
         
-        return LockInfo(lock_id=lock.id)
+        return RWLock.get_lock_info(lock.id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Error activating node {node_key}: {e}')
 

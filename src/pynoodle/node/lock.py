@@ -9,6 +9,7 @@ import c_two as cc
 from typing import Literal
 
 from ..config import settings
+from ..schemas.lock import LockInfo
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,14 @@ class RWLock:
         
         # Clear all existing locks to avoid stale locks
         RWLock.clear_all()
+        
+    @staticmethod
+    def get_lock_type(lock_id: str) -> str | None:
+        """Get the lock type ('r' or 'w') for a given lock ID."""
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
+            cursor = conn.execute('SELECT lock_type FROM locks WHERE lock_id = ?', (lock_id,))
+            row = cursor.fetchone()
+            return row[0] if row else None
 
     @staticmethod
     def is_node_locked(node_key: str) -> bool:
@@ -125,6 +134,16 @@ class RWLock:
         with sqlite3.connect(settings.SQLITE_PATH) as conn:
             conn.execute('DELETE FROM locks')
             conn.commit()
+    
+    @staticmethod
+    def get_lock_info(lock_id: str) -> LockInfo | None:
+        """Get detailed information about a lock."""
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
+            cursor = conn.execute('SELECT node_key, lock_type, access_level FROM locks WHERE lock_id = ?', (lock_id,))
+            row = cursor.fetchone()
+            if row:
+                return LockInfo(lock_id=lock_id, node_key=row[0], lock_type=row[1], access_mode=row[2])
+            return None
 
     def acquired(self) -> bool:
         """Checks if the lock is currently acquired."""

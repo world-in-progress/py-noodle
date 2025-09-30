@@ -24,24 +24,24 @@ if __name__ == '__main__':
     if NODE_KEY == 'root.names':
         noodle.mount_node(NODE_KEY, 'names')
     
-    print('----- Access node ------\n')
+    print('\n----- Access node ------\n')
     
     # Connect to local node root.names
-    with noodle.connect_node(INames, NODE_KEY, 'pw') as names:
+    with noodle.connect(INames, NODE_KEY, 'pw') as names:
         names.add_name('Alice')
         names.add_name('Bob')
         names.add_name('Charlie')
         names.add_name('Noodle1')
         print(names.get_names())
 
-    with noodle.connect_node(INames, NODE_KEY, 'lw') as names:
+    with noodle.connect(INames, NODE_KEY, 'lw') as names:
         print(names.get_names())
         names.remove_name('Noodle1')
         print(names.get_names())
     
-    print('----- Link to node and access ------\n')
+    print('\n----- Link to node and access ------\n')
     
-    lock_id = noodle.link(INames, NODE_KEY, 'r')
+    lock_id = noodle.link(INames, NODE_KEY, 'w')
     names = noodle.access(INames, NODE_KEY, lock_id)
     
     print(names.get_names())
@@ -49,6 +49,19 @@ if __name__ == '__main__':
     print(names.get_names())
     names.remove_name('Noodle1')
     print(names.get_names())
+    
+    noodle.unlink(NODE_KEY, lock_id)
+    
+    print('\n----- Link to node and use context manager ------\n')
+    
+    lock_id = noodle.link(INames, NODE_KEY, 'w')
+    
+    with noodle.connect(INames, NODE_KEY, 'lw', lock_id=lock_id) as names:
+        print(names.get_names())
+        names.add_name('Noodle1')
+        print(names.get_names())
+        names.remove_name('Noodle1')
+        print(names.get_names())
     
     noodle.unlink(NODE_KEY, lock_id)
 

@@ -1,10 +1,11 @@
 import logging
+from typing import Literal
 from fastapi import APIRouter, HTTPException
 
 from ..noodle import noodle
 from ..node.lock import RWLock
-from ..schemas.lock import LockedInfo
-from ..schemas.node import ResourceNodeInfo
+from ..schemas.lock import LockInfo
+from ..schemas.node import ResourceNodeInfo, UnlinkInfo
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -20,12 +21,29 @@ def get_node_info(node_key: str, child_start_index: int = 0, child_end_index: in
         logger.error(f'Error fetching node info: {e}')
         raise HTTPException(status_code=500, detail='Internal Server Error')
 
-@router.get('/lock')
-def is_node_locked(node_key: str, lock_id: str):
+@router.get('/link', response_model=LockInfo)
+def link_node(icrm_tag: str, node_key: str, access_mode: Literal['r', 'w']):
     try:
-        node = noodle.get_node_info(node_key)
-        if not node:
-            raise HTTPException(status_code=404, detail='Node not found')
-        return LockedInfo(locked=RWLock.has_lock(lock_id))
+        # Try to get ICRM
+        icrm_module = noodle.module_cache.icrm_modules.get(icrm_tag)
+        if not icrm_module:
+            raise HTTPException(status_code=404, detail=f'ICRM tag "{icrm_tag}" not found in noodle.')
+        
+        # Link the node
+        icrm = icrm_module.icrm
+        lock_id = noodle.link(icrm, node_key, access_mode)
+        return RWLock.get_lock_info(lock_id)
+    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f'Error checking node lock: {e}')
+        raise HTTPException(status_code=500, detail=f'Error linking nodes: {e}')
+
+@router.get('/unlink', response_model=UnlinkInfo)
+def unlink_node(node_key: str, lock_id: str):
+    try:
+        success, error = noodle.unlink(node_key, lock_id)
+        if not success and error:
+            raise HTTPException(status_code=400, detail=error)
+        return UnlinkInfo(success=True)
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'Error unlinking node: {e}')

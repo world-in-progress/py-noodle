@@ -261,7 +261,6 @@ class RemoteResourceNode(IResourceNode[T]):
         if response.status_code != 200:
             raise RuntimeError(f'Failed to acquire lock for remote CRM server: {response.text}')
         self._remote_lock_id = LockInfo(**response.json()).lock_id
-        print(self._remote_lock_id)
             
         # Create an ICRM instance related to the remote node CRM
         # Refer to proxy_node() in src/pynoodle/endpoints/proxy.py for more details about the proxy API

@@ -8,7 +8,7 @@ from typing import TypeVar, Literal, Type, Generator
 
 from .lock import RWLock
 from ..config import settings
-from ..schemas.lock import LockedInfo
+from ..schemas.lock import LockInfo
 from ..schemas.node import ResourceNodeInfo
 from ..module_cache import ModuleCache, ResourceNodeTemplateModule
 from .node import ResourceNodeRecord, IResourceNode, ResourceNode, RemoteResourceNode, RemoteResourceNodeProxy
@@ -279,7 +279,7 @@ class Treeger:
                 RWLock.unlock_nodes([node.node_key for node in nodes_to_delete])
             return False, str(e)
 
-    def get_node(
+    def _get_node(
         self,
         icrm: Type[T], node_key: str,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
@@ -321,22 +321,70 @@ class Treeger:
         )
     
     @contextmanager
-    def connect_node(
+    def connect(
         self,
         icrm: Type[T],
         node_key: str,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None,
-        retry_interval: float = 1.0
+        retry_interval: float = 1.0,
+        lock_id: str | None = None
     ) -> Generator[T, None, None]:
         """Context manager to connect to a node"""
-        node = self.get_node(icrm, node_key, access_mode, timeout, retry_interval)
-        if node is None:
-            raise ValueError(f'Node "{node_key}" not found or inaccessible')
+        icrm_instance: T
+        is_remote = node_key.startswith('http') and '::' in node_key
+        
+        # If lock_id is provided, validate the lock exists and yield the ICRM instance directly
+        if lock_id:
+            server_address = ''
+            if is_remote:
+                access_address, remote_node_key = node_key.split('::', 1)
+                lock_info_api = f'{access_address}/noodle/lock/?lock_id={lock_id}'
+                
+                response = requests.get(lock_info_api)
+                if response.status_code == 404:
+                    raise ValueError(f'Lock {lock_id} not found for node {node_key}')
+                elif response.status_code != 200:
+                    raise RuntimeError(f'Failed to validate lock for remote CRM server: {response.text}')
+                else:
+                    lock_info = LockInfo(**response.json())
+                    if lock_info.node_key != remote_node_key:
+                        raise ValueError(f'Lock {lock_id} does not belong to node {node_key}')
+                    if lock_info.lock_type != access_mode[1]:
+                        raise ValueError(f'Lock {lock_id} access mode "{lock_info.lock_type}" does not match requested access mode "{access_mode[1]}"')
+                    
+                    server_address = f'{access_address}/noodle/proxy/?node_key={remote_node_key}&lock_id={lock_id}'
+            else:
+                lock_info = RWLock.get_lock_info(lock_id)
+                if not lock_info or lock_info.node_key != node_key:
+                    raise ValueError(f'Lock {lock_id} not found for node {node_key}')
+                if lock_info.lock_type != access_mode[1]:
+                    raise ValueError(f'Lock {lock_id} access mode "{lock_info.lock_type}" does not match requested access mode "{access_mode[1]}"')
+                
+                server_address = 'memory://' + node_key.replace('.', '_') + f'_{lock_id}'
+            
+            # Generate an ICRM instance related to the node CRM
+            icrm_instance = icrm()
+            client = cc.rpc.Client(server_address)
+            icrm_instance.client = client
+        
+        else:
+            # Get the node 
+            node = self._get_node(icrm, node_key, access_mode, timeout, retry_interval)
+            if node is None:
+                raise ValueError(f'Node "{node_key}" not found or inaccessible')
+            
+            icrm_instance = node.crm
+            
         try:
-            yield node.crm
+            
+            yield icrm_instance
+
         finally:
-            node.terminate()
+            # If lock_id is not provided, meaning the connection is temporary
+            # Release the lock and terminate the node CRM server if applicable
+            if not lock_id:
+                node.terminate()
     
     def get_node_info(self, node_key: str, child_start_index: int = 0, child_end_index: int | None = None) -> ResourceNodeInfo | None:
         # Check if node exists in the scene
@@ -370,7 +418,7 @@ class Treeger:
     
     def link(
         self,
-        icrm: Type[T], node_key: str, lock_type: Literal['r', 'w'],
+        icrm: Type[T], node_key: str, access_mode: Literal['r', 'w'],
         timeout: float | None = None, retry_interval: float = 1.0
     ) -> str | None:
         """
@@ -380,7 +428,7 @@ class Treeger:
         Notice: link operation always uses process-level access for the node connection must be long-lived
         """
         # Get the node
-        node = self.get_node(icrm, node_key, 'p' + lock_type, timeout, retry_interval)
+        node = self._get_node(icrm, node_key, 'p' + access_mode, timeout, retry_interval)
         return node.lock_id
     
     def access(
@@ -394,14 +442,19 @@ class Treeger:
         does_lock_exist = False
         if is_remote:
             access_address, remote_node_key = node_key.split('::', 1)
+            lock_info_api = f'{access_address}/noodle/lock/?lock_id={lock_id}'
             node_server_address = f'{access_address}/noodle/proxy/?node_key={remote_node_key}&lock_id={lock_id}'
-            is_node_locked_api = f'{access_address}/noodle/node/lock?node_key={remote_node_key}&lock_id={lock_id}'
             
-            response = requests.get(is_node_locked_api)
-            if response.status_code != 200:
+            response = requests.get(lock_info_api)
+            if response.status_code == 404:
                 does_lock_exist = False
+            elif response.status_code != 200:
+                raise RuntimeError(f'Failed to validate lock for remote CRM server: {response.text}')
             else:
-                does_lock_exist = LockedInfo(**response.json()).locked
+                lock_info = LockInfo(**response.json())
+                if lock_info.node_key != remote_node_key:
+                    does_lock_exist = False
+                does_lock_exist = True
         else:
             does_lock_exist = RWLock.has_lock(lock_id)
             node_server_address = 'memory://' + node_key.replace('.', '_') + f'_{lock_id}'
@@ -425,14 +478,19 @@ class Treeger:
         does_lock_exist = False
         if is_remote:
             access_address, remote_node_key = node_key.split('::', 1)
+            lock_info_api = f'{access_address}/noodle/lock/?lock_id={lock_id}'
             node_server_address = f'{access_address}/noodle/proxy/?node_key={remote_node_key}&lock_id={lock_id}'
-            is_node_locked_api = f'{access_address}/noodle/node/lock?node_key={remote_node_key}&lock_id={lock_id}'
             
-            response = requests.get(is_node_locked_api)
-            if response.status_code != 200:
+            response = requests.get(lock_info_api)
+            if response.status_code == 404:
                 does_lock_exist = False
+            elif response.status_code != 200:
+                raise RuntimeError(f'Failed to validate lock for remote CRM server: {response.text}')
             else:
-                does_lock_exist = LockedInfo(**response.json()).locked
+                lock_info = LockInfo(**response.json())
+                if lock_info.node_key != remote_node_key:
+                    does_lock_exist = False
+                does_lock_exist = True
         else:
             does_lock_exist = RWLock.has_lock(lock_id)
             node_server_address = 'memory://' + node_key.replace('.', '_') + f'_{lock_id}'
@@ -441,7 +499,7 @@ class Treeger:
             error = f'Lock {lock_id} not found for node {node_key}'
             return False, error
         
-        # Shutdown the node's CRM server
+        # Deactivate the node CRM server
         if is_remote:
             try:
                 response = requests.delete(node_server_address)
@@ -450,7 +508,7 @@ class Treeger:
                 else:
                     return True, error
             except Exception as e:
-                error = f'Error shutting down remote node server {node_key}: {e}'
+                error = f'Error deactivating remote node server {node_key}: {e}'
                 return False, error
         else:
             cc.rpc.Client.shutdown(node_server_address, -1.0)
