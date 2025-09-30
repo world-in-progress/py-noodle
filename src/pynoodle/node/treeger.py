@@ -1,17 +1,17 @@
 import json
-import socket
 import sqlite3
 import logging
 import requests
+import c_two as cc
 from contextlib import contextmanager
 from typing import TypeVar, Literal, Type, Generator
 
 from .lock import RWLock
 from ..config import settings
-from ..schemas.scene import ResourceNodeInfo
-from ..schemas.dependencies import DependencyRequest
+from ..schemas.lock import LockedInfo
+from ..schemas.node import ResourceNodeInfo
 from ..module_cache import ModuleCache, ResourceNodeTemplateModule
-from .scene_node import IResourceNode, ResourceNode, RemoteResourceNode, RemoteResourceNodeProxy, ResourceNodeRecord
+from .node import ResourceNodeRecord, IResourceNode, ResourceNode, RemoteResourceNode, RemoteResourceNodeProxy
 
 T = TypeVar('T')
 logger = logging.getLogger(__name__)
@@ -115,9 +115,6 @@ class Treeger:
             access_url = row[ACCESS_INFO] if row[ACCESS_INFO] else None
             launch_params = row[LAUNCH_PARAMS] if row[LAUNCH_PARAMS] else ''
             template = self.module_cache.templates.get(row[TEMPLATE_NAME], None) if row[TEMPLATE_NAME] else None
-            if template is None:
-                logger.error(f'ResourceNodeTemplate {row[TEMPLATE_NAME]} not found in noodle module cache')
-                return None
 
             # Create ResourceNode record
             node = ResourceNodeRecord(
@@ -284,10 +281,10 @@ class Treeger:
 
     def get_node(
         self,
-        icrm: Type[T] | None, node_key: str,
+        icrm: Type[T], node_key: str,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None, retry_interval: float = 1.0
-    ) -> IResourceNode[T] | None:
+    ) -> IResourceNode[T]:
         # Check if icrm_class is valid (must be an ICRM class)
         if icrm and getattr(icrm, 'direction', None) is None:
             raise ValueError(f'Provided icrm_class {icrm.__name__} is not an ICRM class, provide an ICRM class instead')
@@ -326,18 +323,18 @@ class Treeger:
     @contextmanager
     def connect_node(
         self,
-        icrm: Type[T] | None,
+        icrm: Type[T],
         node_key: str,
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None,
         retry_interval: float = 1.0
-    ) -> Generator[IResourceNode[T], None, None]:
+    ) -> Generator[T, None, None]:
         """Context manager to connect to a node"""
         node = self.get_node(icrm, node_key, access_mode, timeout, retry_interval)
         if node is None:
             raise ValueError(f'Node "{node_key}" not found or inaccessible')
         try:
-            yield node
+            yield node.crm
         finally:
             node.terminate()
     
@@ -348,7 +345,7 @@ class Treeger:
         
         # Load node from the database
         node_record = self._load_node_record(node_key, is_cascade=True)
-            
+
         child_start_index = min(child_start_index, len(node_record.children))
         child_end_index = len(node_record.children) if child_end_index is None else min(child_end_index, len(node_record.children))
 
@@ -370,3 +367,94 @@ class Treeger:
             template_name=node_record.template.name if node_record.template else None,
             children=children_info if children_info else None
         )
+    
+    def link(
+        self,
+        icrm: Type[T], node_key: str, lock_type: Literal['r', 'w'],
+        timeout: float | None = None, retry_interval: float = 1.0
+    ) -> str | None:
+        """
+        Link to a resource node in Noodle resource tree.
+        Returns the lock ID if successful, None otherwise.
+        
+        Notice: link operation always uses process-level access for the node connection must be long-lived
+        """
+        # Get the node
+        node = self.get_node(icrm, node_key, 'p' + lock_type, timeout, retry_interval)
+        return node.lock_id
+    
+    def access(
+        self,
+        icrm_class: Type[T], node_key: str, lock_id: str
+    ) -> T:
+        node_server_address = ''
+        is_remote = node_key.startswith('http') and '::' in node_key
+        
+        # Check if the lock exists
+        does_lock_exist = False
+        if is_remote:
+            access_address, remote_node_key = node_key.split('::', 1)
+            node_server_address = f'{access_address}/noodle/proxy/?node_key={remote_node_key}&lock_id={lock_id}'
+            is_node_locked_api = f'{access_address}/noodle/node/lock?node_key={remote_node_key}&lock_id={lock_id}'
+            
+            response = requests.get(is_node_locked_api)
+            if response.status_code != 200:
+                does_lock_exist = False
+            else:
+                does_lock_exist = LockedInfo(**response.json()).locked
+        else:
+            does_lock_exist = RWLock.has_lock(lock_id)
+            node_server_address = 'memory://' + node_key.replace('.', '_') + f'_{lock_id}'
+            
+        if not does_lock_exist:
+            raise ValueError(f'Lock {lock_id} not found for node {node_key}')
+        
+        
+        # Generate an ICRM instance related to the node CRM
+        icrm = icrm_class()
+        client = cc.rpc.Client(node_server_address)
+        icrm.client = client
+        return icrm
+    
+    def unlink(self, node_key: str, lock_id: str) -> tuple[bool, str | None]:
+        error: str | None = None
+        node_server_address = ''
+        is_remote = node_key.startswith('http') and '::' in node_key
+        
+        # Check if the lock exists
+        does_lock_exist = False
+        if is_remote:
+            access_address, remote_node_key = node_key.split('::', 1)
+            node_server_address = f'{access_address}/noodle/proxy/?node_key={remote_node_key}&lock_id={lock_id}'
+            is_node_locked_api = f'{access_address}/noodle/node/lock?node_key={remote_node_key}&lock_id={lock_id}'
+            
+            response = requests.get(is_node_locked_api)
+            if response.status_code != 200:
+                does_lock_exist = False
+            else:
+                does_lock_exist = LockedInfo(**response.json()).locked
+        else:
+            does_lock_exist = RWLock.has_lock(lock_id)
+            node_server_address = 'memory://' + node_key.replace('.', '_') + f'_{lock_id}'
+
+        if not does_lock_exist:
+            error = f'Lock {lock_id} not found for node {node_key}'
+            return False, error
+        
+        # Shutdown the node's CRM server
+        if is_remote:
+            try:
+                response = requests.delete(node_server_address)
+                if response.status_code != 200:
+                    raise RuntimeError(f'HTTP {response.status_code}: {response.text}')
+                else:
+                    return True, error
+            except Exception as e:
+                error = f'Error shutting down remote node server {node_key}: {e}'
+                return False, error
+        else:
+            cc.rpc.Client.shutdown(node_server_address, -1.0)
+            
+            # Remove the lock
+            RWLock.remove_lock(lock_id)
+            return True, error

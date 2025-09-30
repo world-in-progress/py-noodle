@@ -5,8 +5,9 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Body, Response
 
 from ..noodle import noodle
-from ..scene.lock import RWLock
+from ..node.lock import RWLock
 from ..schemas.lock import LockInfo
+from ..node.node import ResourceNode
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 @router.get('/', response_model=LockInfo)
 async def activate_node(node_key: str, icrm_tag: str, lock_type: Literal['r', 'w'], timeout: float | None = None, retry_interval: float = 1.0):
     """
-    Activates a node in the Noodle system.
+    Activate a resource node in Noodle resource tree.
     """
     try:
         # Try to get node information
@@ -31,15 +32,23 @@ async def activate_node(node_key: str, icrm_tag: str, lock_type: Literal['r', 'w
 
         # Get the node
         icrm = noodle.module_cache.icrm_modules.get(icrm_tag).icrm
-        node = noodle.get_node(icrm, node_key, 'p' + lock_type, timeout, retry_interval)
+        node = ResourceNode(
+            icrm,
+            noodle._load_node_record(node_key, is_cascade=False),
+            'p' + lock_type,
+            timeout,
+            retry_interval,
+            activate_at_once=False # do not activate CRM server at once here, for we need to acquire the lock asynchronously to avoid blocking the event loop
+        )
+        # node = noodle.get_node(icrm, node_key, 'p' + lock_type, timeout, retry_interval)
 
         # Acquire the lock for the node asynchronously
-        lock = node._lock
+        lock = node.lock
         await lock.async_acquire()
         
         # Launch the node CRM server at process level
-        node.launch_crm_server()
-        server_address = noodle.node_server_address(node_key, lock.id, 'p')
+        node.activate_memory_server()
+        server_address = node.server_address
 
         # Spin up the CRM server, asynchronously wait for it to be ready
         count = 0
@@ -56,7 +65,7 @@ async def activate_node(node_key: str, icrm_tag: str, lock_type: Literal['r', 'w
 @router.post('/')
 async def proxy_node(node_key: str, lock_id: str, timeout: float | None = None, body: bytes=Body(..., description='C-Two Event Message in Bytes')):
     """
-    Proxies a C-Two event message to the specified node CRM server in process level.
+    Proxy a C-Two event message to the specified node CRM server in process level.
     """
     try:
         # Check if the lock exists

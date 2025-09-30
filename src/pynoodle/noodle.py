@@ -3,7 +3,7 @@ import logging
 from typing import Literal
 
 from .config import settings
-from .scene.treeger import Treeger, NODE_TABLE, NODE_KEY
+from .node.treeger import Treeger, NODE_TABLE, NODE_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ class Noodle(Treeger):
         super().__init__()
     
     def has_node(self, node_key: str) -> bool:
-        """Check if a node exists in the scene database."""
+        """Check if a node exists in the resource tree."""
         with sqlite3.connect(settings.SQLITE_PATH) as conn:
             cursor = conn.execute(f'SELECT 1 FROM {NODE_TABLE} WHERE {NODE_KEY} = ?', (node_key,))
             return cursor.fetchone() is not None

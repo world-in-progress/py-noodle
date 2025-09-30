@@ -2,6 +2,7 @@ import yaml
 import inspect
 import logging
 import threading
+import importlib
 from dataclasses import dataclass
 from typing import TypeVar, Type, Callable
 
@@ -27,7 +28,7 @@ class ICRMModule:
             raise ValueError(f'ICRM tag "{self.tag}" is not in the format "namespace/name/version"')
     
     def _load_from_module(self):
-        module = __import__(self.module_path, fromlist=[''])
+        module = importlib.import_module(self.module_path)
         if not module:
             raise ImportError(f'Module {self.module_path} could not be imported')
         self._icrm = getattr(module, self.name, None)
@@ -58,8 +59,8 @@ class ICRMModule:
 @dataclass
 class ResourceNodeTemplate:
     crm: Type[T]
-    unmount: Callable[[str], None] = lambda x: None
-    mount: Callable[[str, dict | None], dict | None] = lambda x, y: y
+    unmount: Callable[[str], None] = lambda x: None # hook for unmount actions
+    mount: Callable[[str, dict | None], dict | None] = lambda x, y: y # hook for mount actions, and return launch params for node CRM __init__
     
     def __post_init__(self):
         if not self.crm:

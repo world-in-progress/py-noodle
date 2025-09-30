@@ -3,20 +3,14 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    # Server settings
-    SERVER_PORT: int = 8000
-    
-    # Noodle CRM settings
-    NOODLE_CONFIG_PATH: Path = Path('./noodle.config.yaml')
-
-    # Resource tree configuration
-    ROOT_SCENARIO: str = ''
-
     # Scene database settings
-    SQLITE_PATH: Path
+    SQLITE_PATH: Path = Path('./noodle.db')
     
     # Memory temp directory settings
     MEMORY_TEMP_PATH: Path = Path('./temp')
+    
+    # Noodle module settings
+    NOODLE_CONFIG_PATH: Path = Path('./noodle.config.yaml')
     
     @field_validator('NOODLE_CONFIG_PATH')
     @classmethod

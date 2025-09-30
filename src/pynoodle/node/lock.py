@@ -54,7 +54,10 @@ class RWLock:
                 )
             """)
             conn.commit()
-    
+        
+        # Clear all existing locks to avoid stale locks
+        RWLock.clear_all()
+
     @staticmethod
     def is_node_locked(node_key: str) -> bool:
         """Check if a node is currently active."""
@@ -123,10 +126,19 @@ class RWLock:
             conn.execute('DELETE FROM locks')
             conn.commit()
 
+    def acquired(self) -> bool:
+        """Checks if the lock is currently acquired."""
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
+            cursor = conn.execute('SELECT 1 FROM locks WHERE lock_id = ?', (self.id,))
+            return cursor.fetchone() is not None
+
     def acquire(self) -> None:
         """
         Acquires the lock, blocking until it's available or timeout occurs.
         """
+        if self.acquired():
+            return  # already acquired
+        
         start_time = time.monotonic()
         while (self.timeout is None) or (time.monotonic() - start_time < self.timeout):
             conn = self._get_connection()
@@ -185,6 +197,9 @@ class RWLock:
         """
         Acquires the lock asynchronously, blocking until it's available or timeout occurs.
         """
+        if self.acquired():
+            return  # already acquired
+        
         start_time = time.monotonic()
         while (self.timeout is None) or (time.monotonic() - start_time < self.timeout):
             conn = self._get_connection()
