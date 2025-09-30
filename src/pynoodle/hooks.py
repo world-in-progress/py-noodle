@@ -2,10 +2,9 @@ import shutil
 import logging
 from fastapi import FastAPI
 
-from .noodle import noodle
 from .config import settings
 from .endpoints import router
-from .scene import RWLock, Treeger
+from .node import RWLock, Treeger
 
 logger = logging.getLogger(__name__)
 
@@ -22,20 +21,8 @@ def NOODLE_INIT(app: FastAPI | None = None) -> None:
         # Register Noodle endpoints to the FastAPI app
         if app is not None:
             app.include_router(router, prefix='/noodle', tags=['noodle'])
-            for scenario_node in noodle.scenario:
-                endpoint = scenario_node.endpoint
-                if endpoint is not None:
-                    app.include_router(endpoint, prefix='/noodle')
-
         else:
             logger.debug('No FastAPI app provided, Noodle endpoints will not be registered.')
-
-        # Call after_noodle_init hooks if ROOT_SCENARIO is set
-        if settings.ROOT_SCENARIO:
-            scenario_node = noodle.scenario[settings.ROOT_SCENARIO]
-            if scenario_node is None:
-                raise ImportError(f'Scenario node {settings.ROOT_SCENARIO} not found in scenario graph.')
-            scenario_node.after_noodle_init()
 
 def NOODLE_TERMINATE() -> None:
     """Terminate Noodle CRM servers running in process level and clean up locks."""
@@ -48,5 +35,5 @@ def NOODLE_TERMINATE() -> None:
     if settings.MEMORY_TEMP_PATH.exists():
         shutil.rmtree(settings.MEMORY_TEMP_PATH)
         
-    # Clear all locks in the database
+    # Clear all locks
     RWLock.clear_all()

@@ -9,6 +9,7 @@ import c_two as cc
 from typing import Literal
 
 from ..config import settings
+from ..schemas.lock import LockInfo
 
 logger = logging.getLogger(__name__)
 
@@ -54,14 +55,39 @@ class RWLock:
                 )
             """)
             conn.commit()
-    
+        
+        # Clear all existing locks to avoid stale locks
+        RWLock.clear_all()
+        
     @staticmethod
-    def is_node_active(node_key: str) -> bool:
+    def get_lock_type(lock_id: str) -> str | None:
+        """Get the lock type ('r' or 'w') for a given lock ID."""
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
+            cursor = conn.execute('SELECT lock_type FROM locks WHERE lock_id = ?', (lock_id,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    @staticmethod
+    def is_node_locked(node_key: str) -> bool:
         """Check if a node is currently active."""
         with sqlite3.connect(settings.SQLITE_PATH) as conn:
             cursor = conn.execute('SELECT 1 FROM locks WHERE node_key = ?', (node_key,))
             return cursor.fetchone() is not None
     
+    @staticmethod
+    def lock_node(node_key: str, lock_type: Literal['r', 'w'], access_level: Literal['l', 'p'], timeout: float | None = None, retry_interval: float = 1.0) -> 'RWLock':
+        """Acquire a lock for a node."""
+        lock = RWLock(node_key, access_level + lock_type, timeout, retry_interval)
+        lock.acquire()
+        return lock
+    
+    @staticmethod
+    def unlock_nodes(node_keys: list[str]) -> None:
+        """Release the locks for a list of nodes."""
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
+            conn.execute('DELETE FROM locks WHERE node_key IN ({})'.format(', '.join('?' for _ in node_keys)), node_keys)
+            conn.commit()
+
     @staticmethod
     def has_lock(lock_id: str) -> bool:
         """Check if a lock with the given ID exists."""
@@ -108,11 +134,30 @@ class RWLock:
         with sqlite3.connect(settings.SQLITE_PATH) as conn:
             conn.execute('DELETE FROM locks')
             conn.commit()
+    
+    @staticmethod
+    def get_lock_info(lock_id: str) -> LockInfo | None:
+        """Get detailed information about a lock."""
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
+            cursor = conn.execute('SELECT node_key, lock_type, access_level FROM locks WHERE lock_id = ?', (lock_id,))
+            row = cursor.fetchone()
+            if row:
+                return LockInfo(lock_id=lock_id, node_key=row[0], lock_type=row[1], access_mode=row[2])
+            return None
+
+    def acquired(self) -> bool:
+        """Checks if the lock is currently acquired."""
+        with sqlite3.connect(settings.SQLITE_PATH) as conn:
+            cursor = conn.execute('SELECT 1 FROM locks WHERE lock_id = ?', (self.id,))
+            return cursor.fetchone() is not None
 
     def acquire(self) -> None:
         """
         Acquires the lock, blocking until it's available or timeout occurs.
         """
+        if self.acquired():
+            return  # already acquired
+        
         start_time = time.monotonic()
         while (self.timeout is None) or (time.monotonic() - start_time < self.timeout):
             conn = self._get_connection()
@@ -171,6 +216,9 @@ class RWLock:
         """
         Acquires the lock asynchronously, blocking until it's available or timeout occurs.
         """
+        if self.acquired():
+            return  # already acquired
+        
         start_time = time.monotonic()
         while (self.timeout is None) or (time.monotonic() - start_time < self.timeout):
             conn = self._get_connection()

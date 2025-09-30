@@ -5,66 +5,70 @@ from pathlib import Path
 test_module_path = Path.cwd()
 sys.path.insert(0, str(test_module_path))
 
-from pynoodle import noodle, NOODLE_INIT, NOODLE_TERMINATE
-from tests.icrms.ihello import IHello
 from tests.icrms.inames import INames
+from pynoodle import noodle, NOODLE_INIT, NOODLE_TERMINATE
 
 logging.basicConfig(level=logging.INFO)
+
+NODE_KEY = 'root.names'
+NODE_KEY = 'http://127.0.0.1:8000::nameSet'
 
 if __name__ == '__main__':
     NOODLE_INIT()
     
-    print('\n----- Mount and import nodes ------\n')
+    print('\n----- Mount nodes ------\n')
     
     noodle.mount_node('root')
     
     # Mount local nodes: root.names
-    noodle.mount_node('root.names', 'names')
+    if NODE_KEY == 'root.names':
+        noodle.mount_node(NODE_KEY, 'names')
     
-    # Proxy remote nodes http://127.0.0.1:8000::nameSet as root.names
-    # noodle.proxy_node('root.names', 'names', 'http://127.0.0.1:8000', 'nameSet')
-    
-    # Mount local nodes: root.hello, dependent on local node root.names
-    noodle.mount_node('root.hello', 'hello', launch_params={'names_node_key': 'root.names'}, dependent_node_keys_or_infos=['root.names'])
-    
-    # Mount local nodes: root.hello, dependent on remote node http://127.0.0.1:8000::nameSet
-    # noodle.mount_node('root.hello', 'hello', launch_params={'names_node_key': 'http://127.0.0.1:8000::nameSet'}, dependent_node_keys_or_infos=['http://127.0.0.1:8000::nameSet'])
-
-    print('\n----- Connect to nodes ------\n')
-
-    # Connect to remote node http://127.0.0.1:8000::nameSet
-    # with noodle.connect_node(INames, 'http://127.0.0.1:8000::nameSet', 'lw') as names:
+    print('\n----- Access node ------\n')
     
     # Connect to local node root.names
-    with noodle.connect_node(INames, 'root.names', 'lw') as names:
-        names.crm.add_name('Alice')
-        names.crm.add_name('Bob')
-        names.crm.add_name('Charlie')
-        names.crm.add_name('Dave')
+    with noodle.connect(INames, NODE_KEY, 'pw') as names:
+        names.add_name('Alice')
+        names.add_name('Bob')
+        names.add_name('Charlie')
+        names.add_name('Noodle1')
+        print(names.get_names())
 
-    with noodle.connect_node(IHello, 'root.hello', 'pr') as hello:
-        print(hello.server_address)
-        crm = hello.crm
-        print(crm.greet(0))
-        print(crm.greet(1))
-        print(crm.greet(2))
-        print(crm.greet(3))
+    with noodle.connect(INames, NODE_KEY, 'lw') as names:
+        print(names.get_names())
+        names.remove_name('Noodle1')
+        print(names.get_names())
     
-    print('\n----- Use node directly and error calling ------\n')
+    print('\n----- Link to node and access ------\n')
     
-    hello = noodle.get_node(IHello, 'root.hello', 'lr')
-    try:
-        crm = hello.crm
-        print(crm.greet(8))
-    except Exception as e:
-        print(f'Error: {e}')
-    finally:
-        hello.terminate()
+    lock_id = noodle.link(INames, NODE_KEY, 'w')
+    names = noodle.access(INames, NODE_KEY, lock_id)
+    
+    print(names.get_names())
+    names.add_name('Noodle1')
+    print(names.get_names())
+    names.remove_name('Noodle1')
+    print(names.get_names())
+    
+    noodle.unlink(NODE_KEY, lock_id)
+    
+    print('\n----- Link to node and use context manager ------\n')
+    
+    lock_id = noodle.link(INames, NODE_KEY, 'w')
+    
+    with noodle.connect(INames, NODE_KEY, 'lw', lock_id=lock_id) as names:
+        print(names.get_names())
+        names.add_name('Noodle1')
+        print(names.get_names())
+        names.remove_name('Noodle1')
+        print(names.get_names())
+    
+    noodle.unlink(NODE_KEY, lock_id)
 
-    print('\n----- Unmount nodes ------\n')
-
-    noodle.unmount_node('root.names')   # failed, as root.hello depends on it
-    noodle.unmount_node('root.hello')   # success, as it is not a dependency of any other node
-    noodle.unmount_node('root.names')   # success, as it is not a dependency of any other node
+    if NODE_KEY == 'root.names':
+        print('\n----- Unmount nodes ------\n')
+        
+        noodle.unmount_node('root.names')
+        noodle.unmount_node('root')
     
     NOODLE_TERMINATE()

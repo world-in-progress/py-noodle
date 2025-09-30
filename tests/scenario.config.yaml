@@ -1,7 +1,6 @@
-module_prefix: tests.crms
-module_postfix: null
-scenario_nodes:
+icrms:
+  - tag: test/INames/0.0.1
+    module_path: tests.icrms.inames
+node_templates:
   - name: names
-  - name: hello
-    dependencies:
-      - names
+    module_path: tests.crms.names

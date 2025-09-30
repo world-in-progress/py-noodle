@@ -5,8 +5,9 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Body, Response
 
 from ..noodle import noodle
-from ..scene.lock import RWLock
+from ..node.lock import RWLock
 from ..schemas.lock import LockInfo
+from ..node.node import ResourceNode
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -14,29 +15,39 @@ logger = logging.getLogger(__name__)
 @router.get('/', response_model=LockInfo)
 async def activate_node(node_key: str, icrm_tag: str, lock_type: Literal['r', 'w'], timeout: float | None = None, retry_interval: float = 1.0):
     """
-    Activates a node in the Noodle system.
+    Activate a resource node in Noodle resource tree.
     """
     try:
         # Try to get node information
         node_info = noodle.get_node_info(node_key)
         if not node_info:
-            raise HTTPException(status_code=404, detail=f'Node {node_key} not found')
+            raise HTTPException(status_code=404, detail=f'Node "{node_key}" not found')
+        if not node_info.template_name:
+            raise HTTPException(status_code=500, detail=f'Node "{node_key}" is a resource set, cannot be activated')
         
         # Validate the ICRM tag
-        node_icrm_tag = noodle.scenario.get_icrm_tag(node_info.scenario_node_name)
-        if node_icrm_tag != icrm_tag:
-            raise HTTPException(status_code=404, detail=f'ICRM tag "{icrm_tag}" not match node "{node_key}", expected "{node_icrm_tag}"')
+        is_matched, error = noodle.module_cache.match(icrm_tag, node_info.template_name)
+        if not is_matched and error:
+            raise HTTPException(status_code=404, detail=f'ICRM tag "{icrm_tag}" not match template "{node_info.template_name}" of node "{node_key}", reason: {error}')
 
-        # Get the node (mock the icrm class not provided)
-        node = noodle.get_node(None, node_key, 'p' + lock_type, timeout, retry_interval)
+        # Get the node
+        icrm = noodle.module_cache.icrm_modules.get(icrm_tag).icrm
+        node = ResourceNode(
+            icrm,
+            noodle._load_node_record(node_key, is_cascade=False),
+            'p' + lock_type,
+            timeout,
+            retry_interval,
+            activate_at_once=False # do not activate CRM server at once here, for we need to acquire the lock asynchronously to avoid blocking the event loop
+        )
 
         # Acquire the lock for the node asynchronously
-        lock = node._lock
+        lock = node.lock
         await lock.async_acquire()
         
         # Launch the node CRM server at process level
-        node.launch_crm_server()
-        server_address = noodle.node_server_address(node_key, lock.id, 'p')
+        node.activate_memory_server()
+        server_address = node.server_address
 
         # Spin up the CRM server, asynchronously wait for it to be ready
         count = 0
@@ -46,14 +57,14 @@ async def activate_node(node_key: str, icrm_tag: str, lock_type: Literal['r', 'w
             await asyncio.sleep(0.1)
             count += 1
         
-        return LockInfo(lock_id=lock.id)
+        return RWLock.get_lock_info(lock.id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Error activating node {node_key}: {e}')
 
 @router.post('/')
 async def proxy_node(node_key: str, lock_id: str, timeout: float | None = None, body: bytes=Body(..., description='C-Two Event Message in Bytes')):
     """
-    Proxies a C-Two event message to the specified node CRM server in process level.
+    Proxy a C-Two event message to the specified node CRM server in process level.
     """
     try:
         # Check if the lock exists

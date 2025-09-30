@@ -1,6 +1,6 @@
-from pynoodle import icrm
+import c_two as cc
 
-@icrm('test', '0.0.1')
+@cc.icrm(namespace='test', version='0.0.1')
 class INames:
     def get_names(self) -> list[str]:
         """Return a list of names."""

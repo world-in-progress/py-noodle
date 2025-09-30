@@ -18,12 +18,11 @@ async def lifespan(app: FastAPI):
     NOODLE_INIT(app)
 
     noodle.mount_node('nameSet', 'names')
-    with noodle.connect_node(INames, 'nameSet', 'lw') as names:
-        crm = names.crm
-        crm.add_name('Alice')
-        crm.add_name('Bob')
-        crm.add_name('Charlie')
-    
+    with noodle.connect(INames, 'nameSet', 'lw') as names:
+        names.add_name('Alice')
+        names.add_name('Bob')
+        names.add_name('Charlie')
+
     yield
     
     noodle.unmount_node('nameSet')
