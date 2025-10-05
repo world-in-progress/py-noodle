@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     NOODLE_INIT(app)
 
-    noodle.mount_node('nameSet', 'names')
+    noodle.mount('nameSet', 'names')
     with noodle.connect(INames, 'nameSet', 'lw') as names:
         names.add_name('Alice')
         names.add_name('Bob')
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
 
     yield
     
-    noodle.unmount_node('nameSet')
+    noodle.unmount('nameSet')
     NOODLE_TERMINATE()
 
 def create_app() -> FastAPI:

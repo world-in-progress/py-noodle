@@ -175,7 +175,7 @@ class Treeger:
             logger.error(f'Failed to proxy node "{node_key}" with ResourceNodeTemplate "{node_template_name}": {e}')
             return False, str(e)
 
-    def mount_node(
+    def mount(
         self, node_key: str,
         node_template_name: str | None = None, mount_params: any = None
     ) -> tuple[bool, str]:
@@ -224,7 +224,7 @@ class Treeger:
             logger.error(f'Failed to mount node "{node_key}": {e}')
             return False, str(e)
 
-    def unmount_node(self, node_key: str) -> tuple[bool, str]:
+    def unmount(self, node_key: str) -> tuple[bool, str]:
         """Unmount a node from the scene"""
         # If the node does not exist, return True, as it is already unmounted
         if not self._has_node(node_key):

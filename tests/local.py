@@ -18,11 +18,12 @@ if __name__ == '__main__':
     
     print('\n----- Mount nodes ------\n')
     
-    noodle.mount_node('root')
+    # Mount local node: root
+    noodle.mount('root')
     
-    # Mount local nodes: root.names
+    # Mount node: root.names
     if NODE_KEY == 'root.names':
-        noodle.mount_node(NODE_KEY, 'names')
+        noodle.mount(NODE_KEY, 'names')
     
     print('\n----- Access node ------\n')
     
@@ -68,7 +69,7 @@ if __name__ == '__main__':
     if NODE_KEY == 'root.names':
         print('\n----- Unmount nodes ------\n')
         
-        noodle.unmount_node('root.names')
-        noodle.unmount_node('root')
+        noodle.unmount('root.names')
+        noodle.unmount('root')
     
     NOODLE_TERMINATE()
