@@ -210,6 +210,6 @@ __marimo__/
 .DS_Store?
 *.db
 *.json
-resources/
+resource/
 tests/module/hello/
 tests/module/names/
