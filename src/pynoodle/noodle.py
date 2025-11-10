@@ -1,7 +1,7 @@
 import sqlite3
 import logging
-from typing import Literal
 
+from typing import Literal
 from .config import settings
 from .node.treeger import Treeger, NODE_TABLE, NODE_KEY
 
@@ -25,5 +25,6 @@ class Noodle(Treeger):
         elif access_level == 'p':
             scheme = 'memory://'
         return scheme + node_key.replace('.', '_') + f'_{lock_id}'
+    
 
 noodle = Noodle()

@@ -175,9 +175,15 @@ class Treeger:
             logger.error(f'Failed to proxy node "{node_key}" with ResourceNodeTemplate "{node_template_name}": {e}')
             return False, str(e)
 
+    def get_template(self, template_name: str) -> ResourceNodeTemplateModule | None:
+        if template_name is None: 
+            return None
+        return self.module_cache.templates.get(template_name, None)
+
     def mount(
         self, node_key: str,
-        node_template_name: str | None = None, mount_params: any = None
+        node_template_name: str | None = None, 
+        mount_params: any = None #TODO: type changing: json string
     ) -> tuple[bool, str]:
         # Check if node already exists in db
         if (self._has_node(node_key)):
@@ -205,9 +211,13 @@ class Treeger:
             if parent_key and not self._has_node(parent_key):
                 raise ValueError(f'Parent node "{parent_key}" not found in scene for node "{node_key}"')
 
+            # TODO: modify the way of getting launch_params
             # Call resource node mount hook and get launch parameters
             launch_params_json = None
             if node_template:
+                launch_params = node_template.privatization(node_key, mount_params) # launch_params is a json string
+                node_template.mount(node_key, mount_params)
+
                 launch_params = node_template.mount(node_key, mount_params)
                 if launch_params is not None and not isinstance(launch_params, dict):
                     raise ValueError(f'Launch parameters for node "{node_key}" must be a dictionary if provided')

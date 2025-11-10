@@ -8,3 +8,21 @@ class ResourceNodeInfo(BaseModel):
 
 class UnlinkInfo(BaseModel):
     success: bool
+
+class PushResponse(BaseModel):
+    success: bool
+    message: str
+    target_node_key: str
+    mount_params: str
+    compress_file_path: str
+
+class PullResponse(BaseModel):
+    success: bool
+    message: str
+    target_node_key: str
+
+class PackingResponse(BaseModel):
+    success: bool
+    message: str
+    compress_file_size: int
+    compress_file_path: str
