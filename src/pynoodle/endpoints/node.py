@@ -227,7 +227,29 @@ def pull_node(template_name: str, target_node_key: str, source_node_key: str, re
                 temp_path.unlink()
                 temp_path.parent.rmdir()
     
+@router.get('/pull_from', response_model=PullFromResponse)
+def pull_from(source_node_key: str, target_node_key: str):
+    try:
+        source_temp_dir = Path(tempfile.gettempdir())
+        source_filename = f"push_{source_node_key.replace('.', '_')}.tar.gz"
+        source_path = source_temp_dir / source_filename
 
+        if not source_path.exists():
+            raise HTTPException(status_code=404, detail=f'File not found: {source_path}')
+            
+        file_size = source_path.stat().st_size
+        
+        return PullFromResponse(
+            success=True,
+            message="File ready for download",
+            source_node_key=source_node_key,
+            target_node_key=target_node_key,
+            file_path=str(source_path),
+            file_size=file_size
+        )
+    except Exception as e:
+        logger.error(f'Error preparing file transfer for {source_node_key}: {e}')
+        raise HTTPException(status_code=500, detail=f'Error preparing file transfer: {e}')
 
 @router.post('/packing', response_model=PackingResponse)
 def packing(source_node_key: str,template_name: str):
@@ -255,29 +277,6 @@ def packing(source_node_key: str,template_name: str):
     except Exception as e:
         logger.error(f'Unexpected error in packing function: {e}')
 
-@router.get('/pull_from', response_model=PullFromResponse)
-def pull_from(source_node_key: str, target_node_key: str):
-    try:
-        source_temp_dir = Path(tempfile.gettempdir())
-        source_filename = f"push_{source_node_key.replace('.', '_')}.tar.gz"
-        source_path = source_temp_dir / source_filename
-
-        if not source_path.exists():
-            raise HTTPException(status_code=404, detail=f'File not found: {source_path}')
-            
-        file_size = source_path.stat().st_size
-        
-        return PullFromResponse(
-            success=True,
-            message="File ready for download",
-            source_node_key=source_node_key,
-            target_node_key=target_node_key,
-            file_path=str(source_path),
-            file_size=file_size
-        )
-    except Exception as e:
-        logger.error(f'Error preparing file transfer for {source_node_key}: {e}')
-        raise HTTPException(status_code=500, detail=f'Error preparing file transfer: {e}')
 
 @router.get('/download_file')
 def download_file(file_path: str):
