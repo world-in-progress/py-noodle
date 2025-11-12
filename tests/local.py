@@ -10,8 +10,8 @@ from pynoodle import noodle, NOODLE_INIT, NOODLE_TERMINATE
 
 logging.basicConfig(level=logging.INFO)
 
-NODE_KEY = 'root.names'
-# NODE_KEY = 'http://127.0.0.1:8000::nameSet'
+# NODE_KEY = 'root.names'
+NODE_KEY = 'http://127.0.0.1:8000::nameSet'
 
 if __name__ == '__main__':
     NOODLE_INIT()

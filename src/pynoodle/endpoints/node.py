@@ -138,7 +138,7 @@ def parse_target_resource_path(launch_params_str: str, node_key: str) -> str:
 #         raise HTTPException(status_code=500, detail=f'Error pushing node: {e}')
 
 @router.post('/pull', response_model=PullResponse)
-def pull_node(template_name: str, target_node_key: str, source_node_key: str, remote_noodle_url: str, mount_params: str, compress_file: UploadFile):
+def pull_node(template_name: str, target_node_key: str, source_node_key: str, remote_noodle_url: str, mount_params: str):
     """
     Pull a node from remote resource tree.
     """
