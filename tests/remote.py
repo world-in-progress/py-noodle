@@ -6,10 +6,14 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+pynoodle_src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, pynoodle_src_path)
+# Add server root to sys.path for accessing crms and icrms
+server_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, server_root_path)
 
 from pynoodle import noodle, NOODLE_INIT, NOODLE_TERMINATE
-from tests.icrms.inames import INames
+from icrms.inames import INames
 
 logging.basicConfig(level=logging.INFO)
 
@@ -49,4 +53,4 @@ def create_app() -> FastAPI:
 app = create_app()
 
 if __name__ == '__main__':
-    uvicorn.run('tests.remote:app', host='0.0.0.0', port=8000)
+    uvicorn.run('remote:app', host='0.0.0.0', port=8000)

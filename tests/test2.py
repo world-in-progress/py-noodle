@@ -19,7 +19,6 @@ LOCAL_SERVER_URL = 'http://127.0.0.1:8004'
 REMOTE_SERVER_URL = 'http://127.0.0.1:8005'
 
 def wait_for_server(url, timeout=30):
-    """等待服务器启动"""
     start_time = time.time()
     while time.time() - start_time < timeout:
         try:
@@ -35,7 +34,6 @@ def wait_for_server(url, timeout=30):
     return False
 
 def start_local_server():
-    """在后台启动本地服务器"""
     print("启动本地服务器...")
     server_script = os.path.join(os.path.dirname(__file__), 'local2.py')
     
@@ -52,8 +50,8 @@ def start_local_server():
             [sys.executable, server_script],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd=os.path.dirname(server_script),
-            env=env  # 传递环境变量
+            cwd=os.path.dirname(server_script), #确保子进程使用与父进程相同的工作目录
+            env=env
         )
         
         # 检查进程是否立即退出
@@ -161,18 +159,14 @@ def test_pull_functionality():
         print("测试完成")
 
 if __name__ == '__main__':
-    # 启动本地服务
     local_server = start_local_server()
     
     if local_server:
         try:
-            # 给服务器一点时间完全启动
             time.sleep(2)
             
-            # 运行测试
             test_pull_functionality()
         finally:
-            # 关闭服务器
             print("关闭本地服务器...")
             try:
                 if sys.platform == 'win32':

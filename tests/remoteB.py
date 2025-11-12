@@ -22,9 +22,9 @@ def create_app():
     
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # 启动事件
+
         print("应用启动，初始化 Noodle...")
-        NOODLE_INIT()
+        NOODLE_INIT(app)
         
         # 挂载本地根节点
         try:
