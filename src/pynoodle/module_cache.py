@@ -1,89 +1,17 @@
 import yaml
-import json
-import shutil
-import tarfile
 import inspect
 import logging
 import threading
 import importlib
-from pathlib import Path
 from dataclasses import dataclass
 from typing import TypeVar, Type, Callable
 
-from . import noodle
-from .node.treeger import Treeger
+
 from .config import settings
 from .schemas.config import NoodleConfiguration
 
 T = TypeVar('T')
 logger = logging.getLogger(__name__)
-
-def default_pack(node_key: str, tar_path: str) -> tuple[str, int]:
-    """
-    Generic pack implementation that compresses resource data into a tar file.
-    
-    Args:
-        node_key: The node key being packed
-        
-    Returns:
-        Path to the compressed tar file
-    """
-
-    try:
-        treeger = Treeger()
-        node_record = treeger._load_node_record(node_key, is_cascade=False)
-        launch_params_str = node_record.launch_params
-        launch_params = json.loads(launch_params_str)
-        target_resource_path = launch_params.get('resource_space')
-        resource_path = target_resource_path
-        
-        with tarfile.open(tar_path, 'w:gz') as tarf:
-            if resource_path.is_file():
-                # If it's a single file, add it directly
-                tarf.add(resource_path, arcname=resource_path.name)
-            elif resource_path.is_dir():
-                # If it's a directory, add all files recursively
-                for file_path in resource_path.rglob('*'):
-                    if file_path.is_file():
-                        arcname = file_path.relative_to(resource_path.parent)
-                        tarf.add(file_path, arcname=arcname)
-        
-        file_size = tar_path.stat().st_size
-        
-        logger.info(f"Successfully packed node {node_key} to {tar_path}")
-        return str(tar_path), file_size
-        
-    except Exception as e:
-        logger.error(f"Error packing node {node_key}: {e}")
-        # Clean up the tar file if creation failed
-        if Path(tar_path).exists():
-            Path(tar_path).unlink()
-        raise
-
-def default_unpack(target_node_key: str, tar_path: str, template_name: str, mount_params: dict) -> None:
-    """
-    Generic unpack implementation that extracts resource data from a tar file.
-    
-    Args:
-        node_key: The node key being unpacked
-        tar_path: Path to the compressed tar file
-    """
-    try:
-        node_info = noodle.get_node_info(target_node_key)
-        launch_params_str = getattr(node_info, 'launch_params', None)
-        launch_params = json.loads(launch_params_str)
-        target_node_path = launch_params.get('resource_space')
-        
-        Path(target_node_path).mkdir(parents=True, exist_ok=True)
-
-        with tarfile.open(tar_path, 'r:gz') as tarf:
-            tarf.extractall(target_node_path)
-        
-        noodle.mount(target_node_key, node_template_name=template_name, mount_params=mount_params)
-    except Exception as e:
-        logger.error(f"Error unpacking node {target_node_key}: {e}")
-        raise
-        
 
 
 @dataclass
@@ -137,16 +65,11 @@ class ResourceNodeTemplate:
     unpack: Callable[[str, str, str, dict | None], None] = lambda x, y, z, w: None
     unmount: Callable[[str], None] = lambda x: None
     mount: Callable[[str, dict | None], dict | None] = lambda x, y: y
+    privatization: Callable[[str, dict | None], dict | None] = lambda x, y: y
 
     def __post_init__(self):
         if not self.crm:
             raise ValueError('CRM class must be provided for ResourceNodeTemplate')
-        if not hasattr(self, 'pack') or not callable(self.pack):
-            # Default pull implementation
-            self.pack = default_pack
-        if not hasattr(self, 'unpack') or not callable(self.unpack):
-            # Default unpack implementation
-            self.unpack = default_unpack
 
     
 @dataclass
@@ -160,6 +83,7 @@ class ResourceNodeTemplateModule:
     _unpack: Callable[[str, str, str, dict], None] = None
     _unmount: Callable[[str], None] = None
     _mount: Callable[[str, dict | None], dict | None] = None
+    _privatization: Callable[[str, dict | None], dict | None] = None
 
     def _load_from_module(self):
         module = __import__(self.module_path, fromlist=[''])
@@ -175,6 +99,7 @@ class ResourceNodeTemplateModule:
         self._unpack = template.unpack
         self._mount = template.mount
         self._unmount = template.unmount
+        self._privatization = template.privatization
 
         if not self._crm:
             raise ImportError(f'CRM class "{self.name}" not found in module {self.module_path}')
@@ -213,6 +138,13 @@ class ResourceNodeTemplateModule:
             if self._unmount is None:
                 self._load_from_module()
             return self._unmount
+    
+    @property
+    def privatization(self) -> Callable[[str, dict], dict | None]:
+        with self._lock:
+            if self._privatization is None:
+                self._load_from_module()
+            return self._privatization
         
 class ModuleCache:
     def __init__(self):

@@ -211,14 +211,12 @@ class Treeger:
             if parent_key and not self._has_node(parent_key):
                 raise ValueError(f'Parent node "{parent_key}" not found in scene for node "{node_key}"')
 
-            # TODO: modify the way of getting launch_params
             # Call resource node mount hook and get launch parameters
             launch_params_json = None
             if node_template:
                 launch_params = node_template.privatization(node_key, mount_params) # launch_params is a json string
                 node_template.mount(node_key, mount_params)
 
-                launch_params = node_template.mount(node_key, mount_params)
                 if launch_params is not None and not isinstance(launch_params, dict):
                     raise ValueError(f'Launch parameters for node "{node_key}" must be a dictionary if provided')
                 # Convert to JSON string
@@ -526,3 +524,4 @@ class Treeger:
             # Remove the lock
             RWLock.remove_lock(lock_id)
             return True, error
+        

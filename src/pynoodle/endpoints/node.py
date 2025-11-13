@@ -7,10 +7,11 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, UploadFile
 
 from ..noodle import noodle
+from ..config import settings
 from ..node.lock import RWLock
 from urllib.parse import urljoin
 from ..schemas.lock import LockInfo
-from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PushResponse, PullResponse, PackingResponse
+from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, FileResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -138,159 +139,130 @@ def parse_target_resource_path(launch_params_str: str, node_key: str) -> str:
 #         raise HTTPException(status_code=500, detail=f'Error pushing node: {e}')
 
 @router.post('/pull', response_model=PullResponse)
-def pull_node(template_name: str, target_node_key: str, source_node_key: str, remote_noodle_url: str, mount_params: str, compress_file: UploadFile):
+def pull_node(template_name: str, target_node_key: str, source_node_key: str, mount_params: str):
     """
     Pull a node from remote resource tree.
     """
-    template = noodle.get_template(template_name)
-    if template is None:
-        raise HTTPException(status_code=404, detail=f'ResourceNodeTemplate "{template_name}" not found in noodle.')
-
-    node_info = noodle.get_node_info(target_node_key)
-    if not node_info:
-        raise ValueError(f'Node "{target_node_key}" not found')
-    
-    node_info_recode = noodle._load_node_record(target_node_key, is_parent=False)
-    if node_info_recode.parent_key is None:
-        raise ValueError(f'Node "{target_node_key}" has no parent')
-    
-    launch_params_str = getattr(node_info, 'launch_params', None)
-    if not launch_params_str:
-            raise ValueError(f'Node "{target_node_key}" has no launch parameters')
-    
-    # Check whether the node_key exists in the remote noodle.
-    get_params = {"node_key": source_node_key}
     try:
-       response = httpx.get(remote_noodle_url, params = get_params, timeout=10.0)
-       if response.status_code == 404:
-           raise HTTPException(status_code=404, detail=f'Node "{source_node_key}" not found in remote noodle.')
-       elif response.status_code != 200:
-           raise HTTPException(status_code=500, detail=f'Error pulling node: {response.text}')
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f'Error pulling node: {e}')
-    
-    # Trigger the pack operation on the remote noodle to package the resource nodes under the remote noodle.
-    remote_packing_url = urljoin(remote_noodle_url, '/packing')
-    packing_params = {'source_node_key': source_node_key, 'template_name': template_name}
-    try:
-        response = httpx.get(remote_packing_url, params = packing_params, timeout=10.0)
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail=f'Error pulling node: {response.text}')
+        # Check if target node exists
+        # TODO: Must let front end know the renamed node key
+        target_node = noodle.get_node_info(target_node_key)
+        if target_node is not None:
+            target_node_key = target_node.node_key + '_copy'
         
-        packing_result = response.json()
-        file_size = packing_result.get('compress_file_size', 0)
+        # Check if template exists
+        template = noodle.get_template(template_name)
+        if template is None:
+            raise HTTPException(status_code=404, detail=f'ResourceNodeTemplate "{template_name}" not found in noodle.')
 
-        temp_path = Path('/tmp/pull_cache') / f'pull_{target_node_key.replace(".", "_")}.tar.gz'
-        temp_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(temp_path, 'wb') as f:
-            f.seek(file_size - 1)
-            f.write(b'\0')
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f'Error pulling node: {e}')
-    
-    # Trigger the pull_from and download_file operations on the remote noodle to send the packaged content from the remote noodle to the local noodle.
-    remote_pull_from_url = urljoin(remote_noodle_url, '/pull_from')
-    params = {
-        'source_node_key': source_node_key,
-        'target_node_key': target_node_key,
-    }
-    try:
-        response = httpx.post(remote_pull_from_url, params = params, timeout=10.0)
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail=f'Error pulling node: {response.text}')
+        # Check if parent node exists
+        parent_key = '.'.join(target_node_key.split('.')[:-1])
+        paren_node_info = noodle.get_node_info(parent_key)
+        if not paren_node_info:
+            raise HTTPException(status_code=404, detail=f'Parent of node "{target_node_key}" not found')
         
-        pull_result = response.json()
-        remote_file_path = pull_result.get('remote_file_path')
-
-        remote_download_url = urljoin(remote_noodle_url, f'/download_file?file_path={remote_file_path}')
-
-        with httpx.stream('GET', remote_download_url, timeout=10.0) as response:
+        source_noodle_address, source_key = source_node_key.split('::')
+        
+        # Trigger the pack operation on the remote noodle to package the resource node of the remote noodle.
+        remote_packing_url = f"{source_noodle_address}/noodle/node/packing"
+        packing_params = {'node_key': source_key, 'template_name': template_name}
+        try:
+            response = httpx.post(remote_packing_url, params = packing_params, timeout=10.0)
+            if response.status_code == 404:
+                raise HTTPException(status_code=404, detail=f'Source node "{source_key}" not found in remote noodle.')
             if response.status_code != 200:
-                return HTTPException(status_code=500, detail=f'Error pulling node: {response.text}')
+                raise HTTPException(status_code=500, detail=f'Error pulling node: {response.text}')
             
-            with open(temp_path, 'wb') as target_file:
-                for chunk in response.iter_bytes(chunk_size=1024 * 1024):
-                    target_file.write(chunk)
+            try:
+                packing_result = response.json()
+                file_size = packing_result.get('compress_file_size', 0)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f'Error parsing packing response: {str(e)}')
 
-        template.unpack(temp_path, target_node_key, template_name, mount_params)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f'Error pulling node: {e}')
+            temp_path = settings.MEMORY_TEMP_PATH / 'pull_cache' / f'pull_{target_node_key.replace(".", "_")}.tar.gz'
+            temp_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(temp_path, 'wb') as f:
+                f.seek(file_size - 1)
+                f.write(b'\0')
+            
+            return PullResponse(
+                success=True,
+                message="Node pulled successfully.",
+                target_node_key=target_node_key
+            )
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f'Error pulling node: {e}')
+        
+        # Trigger the pull_from operations of the remote noodle to send the packaged content to the local noodle
+        try:
+            pull_from_url = f"{source_noodle_address}/noodle/node/pull_from?node_key={source_key}"
+
+            with httpx.stream('GET', pull_from_url, timeout=10.0) as response:
+                with open(temp_path, 'wb') as target_file:
+                    for chunk in response.iter_bytes(chunk_size=1024 * 1024):
+                        target_file.write(chunk)
+
+            template.unpack(target_node_key, str(temp_path), template_name, mount_params)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f'Error pulling node: {e}')
 
     finally:
-        RWLock.remove_lock(source_node_key)
         with threading.Lock():
-            tar_lock_key = f'{source_node_key}_tar'
-            RWLock.remove_lock(tar_lock_key)
             if temp_path.exists():
                 temp_path.unlink()
                 temp_path.parent.rmdir()
-    
-
-
 @router.post('/packing', response_model=PackingResponse)
-def packing(source_node_key: str,template_name: str):
+def packing(node_key: str):
     try:
-        template = noodle.get_template(template_name)
-        tar_lock_key = f'{source_node_key}_tar'
+        node_info = noodle.get_node_info(node_key)
+        if node_info is None:
+            raise HTTPException(status_code=404, detail=f'Node "{node_key}" not found')
+        
+        template = noodle.get_template(node_info.template_name)
+        tar_lock_key = f'{node_key}_tar'
 
         with threading.Lock():
-            temp_dir = Path(tempfile.gettempdir())
-            tar_filename = f"push_{source_node_key.replace('.', '_')}.tar.gz"
-            tar_path = temp_dir / tar_filename
-            if tar_path.exists():
-                RWLock.lock_node(source_node_key, 'r', 'l')
-                RWLock.remove_lock(tar_lock_key)
-            else:
-                _, file_size = template.pack(source_node_key, str(tar_path))
-                RWLock.lock_node(source_node_key, 'r', 'l')
-                RWLock.lock_node(tar_lock_key, 'r', 'l')
-        return PackingResponse(
-            success = True,
-            message = "Node packed successfully.",
-            compress_file_path = str(tar_path),
-            compress_file_size = file_size
-        )
+            tar_path = settings.MEMORY_TEMP_PATH / 'pull_cache' / f"{node_key.replace('.', '_')}.tar.gz"
+            tar_path.parent.mkdir(parents=True, exist_ok=True)
+            if not tar_path.exists():
+                _, file_size = template.pack(node_key, str(tar_path))
+                
+            RWLock.lock_node(node_key, 'r', 'l')
+            RWLock.lock_node(tar_lock_key, 'r', 'l')
+        return PackingResponse(compress_file_size = file_size)
+    
     except Exception as e:
-        logger.error(f'Unexpected error in packing function: {e}')
+        message = f'Unexpected error in packing function: {e}'
+        logger.error(message)
+        raise HTTPException(status_code=500, detail=message)
 
-@router.get('/pull_from', response_model=PullFromResponse)
-def pull_from(source_node_key: str, target_node_key: str):
+
+@router.get('/pull_from')
+def pull_from(node_key: str):
     try:
-        source_temp_dir = Path(tempfile.gettempdir())
-        source_filename = f"push_{source_node_key.replace('.', '_')}.tar.gz"
-        source_path = source_temp_dir / source_filename
-
-        if not source_path.exists():
-            raise HTTPException(status_code=404, detail=f'File not found: {source_path}')
-            
-        file_size = source_path.stat().st_size
-        
-        return PullFromResponse(
-            success=True,
-            message="File ready for download",
-            source_node_key=source_node_key,
-            target_node_key=target_node_key,
-            file_path=str(source_path),
-            file_size=file_size
-        )
-    except Exception as e:
-        logger.error(f'Error preparing file transfer for {source_node_key}: {e}')
-        raise HTTPException(status_code=500, detail=f'Error preparing file transfer: {e}')
-
-@router.get('/download_file')
-def download_file(file_path: str):
-    try:
-        path = Path(file_path)
-        if not path.exists():
-            raise HTTPException(status_code=404, detail=f'File not found: {file_path}')
+        source_temp_path = settings.MEMORY_TEMP_PATH / 'pull_cache' / f"{node_key.replace('.', '_')}.tar.gz"
+        if not source_temp_path.exists():
+            raise HTTPException(status_code=404, detail=f'File not found: {source_temp_path}')
 
         return FileResponse(
-            path=str(path),
+            path=str(source_temp_path),
             media_type='application/gzip',
-            filename=path.name
+            filename=source_temp_path.name
         )
+        
     except Exception as e:
-        logger.error(f'Error downloading file {file_path}: {e}')
-        raise HTTPException(status_code=500, detail=f'Error downloading file: {e}')
+        message = f'Error pulling from {source_temp_path}'
+        logger.error(message)
+        raise HTTPException(status_code=500, detail=message)
+    finally:
+        tar_lock_key = f'{node_key}_tar'
+        RWLock.remove_lock(node_key)
+        
+        with threading.Lock():
+            RWLock.remove_lock(tar_lock_key)
+            if not RWLock.is_node_locked(tar_lock_key):
+                source_temp_path.unlink()
+                source_temp_path.parent.rmdir()
+        
