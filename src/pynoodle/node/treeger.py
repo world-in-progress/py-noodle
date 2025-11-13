@@ -524,3 +524,4 @@ class Treeger:
             # Remove the lock
             RWLock.remove_lock(lock_id)
             return True, error
+        

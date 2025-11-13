@@ -22,17 +22,6 @@ class PullResponse(BaseModel):
     target_node_key: str
 
 class PackingResponse(BaseModel):
-    success: bool
-    message: str
-    compress_file_size: int
-    compress_file_path: str
-
-class PullFromResponse(BaseModel):
-    success: bool
-    message: str
-    source_node_key: str
-    target_node_key: str
-    compress_file_path: str
     compress_file_size: int
 
 class FileResponse(BaseModel):
