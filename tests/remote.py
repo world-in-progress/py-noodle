@@ -9,11 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 pynoodle_src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src'))
 sys.path.insert(0, pynoodle_src_path)
 # Add server root to sys.path for accessing crms and icrms
-server_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+server_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, server_root_path)
 
 from pynoodle import noodle, NOODLE_INIT, NOODLE_TERMINATE
-from icrms.inames import INames
+from tests.icrms.inames import INames
 
 logging.basicConfig(level=logging.INFO)
 

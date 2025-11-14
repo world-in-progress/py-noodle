@@ -1,10 +1,8 @@
 import httpx
 import logging
-import tempfile
 import threading
-from pathlib import Path
 from typing import Literal
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException
 
 from ..noodle import noodle
 from ..config import settings
@@ -53,7 +51,7 @@ def unlink_node(node_key: str, lock_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Error unlinking node: {e}')
 
-@router.post('/mount', response_model=dict)
+@router.post('/mount')
 def mount_node(mount_request: MountRequest):
     """
     Mount a node
@@ -72,7 +70,7 @@ def mount_node(mount_request: MountRequest):
         logger.error(message)
         raise HTTPException(status_code=500, detail=message)
 
-@router.post('/unmount', response_model=dict)
+@router.post('/unmount')
 def unmount_node(node_key: str):
     """
     Unmount a node
@@ -86,7 +84,6 @@ def unmount_node(node_key: str):
         message = f'Error unmounting node: {e}'
         logger.error(message)
         raise HTTPException(status_code=500, detail=message)
-
 
 def parse_target_resource_path(launch_params_str: str, node_key: str) -> str:
     """
@@ -184,12 +181,6 @@ def pull_node(template_name: str, target_node_key: str, source_node_key: str, mo
             with open(temp_path, 'wb') as f:
                 f.seek(file_size - 1)
                 f.write(b'\0')
-            
-            return PullResponse(
-                success=True,
-                message="Node pulled successfully.",
-                target_node_key=target_node_key
-            )
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f'Error pulling node: {e}')
@@ -206,12 +197,19 @@ def pull_node(template_name: str, target_node_key: str, source_node_key: str, mo
             template.unpack(target_node_key, str(temp_path), template_name, mount_params)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f'Error pulling node: {e}')
+            
+        return PullResponse(
+            success=True,
+            message="Node pulled successfully.",
+            target_node_key=target_node_key
+        )
 
     finally:
         with threading.Lock():
             if temp_path.exists():
                 temp_path.unlink()
                 temp_path.parent.rmdir()
+                
 @router.post('/packing', response_model=PackingResponse)
 def packing(node_key: str):
     try:
@@ -236,7 +234,6 @@ def packing(node_key: str):
         message = f'Unexpected error in packing function: {e}'
         logger.error(message)
         raise HTTPException(status_code=500, detail=message)
-
 
 @router.get('/pull_from')
 def pull_from(node_key: str):
@@ -264,4 +261,3 @@ def pull_from(node_key: str):
             if not RWLock.is_node_locked(tar_lock_key):
                 source_temp_path.unlink()
                 source_temp_path.parent.rmdir()
-        
