@@ -13,7 +13,6 @@ from .schemas.config import NoodleConfiguration
 T = TypeVar('T')
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class ICRMModule:
     tag: str

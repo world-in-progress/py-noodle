@@ -9,9 +9,8 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from ..noodle import noodle
 from ..config import settings
 from ..node.lock import RWLock
-from urllib.parse import urljoin
 from ..schemas.lock import LockInfo
-from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, FileResponse
+from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, FileResponse, MountRequest
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -54,24 +53,26 @@ def unlink_node(node_key: str, lock_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Error unlinking node: {e}')
 
-@router.post("/mount", response_model=dict)
-def mount_node(node_key: str, node_template_name: str = None, mount_params: dict = None):
+@router.post('/mount', response_model=dict)
+def mount_node(mount_request: MountRequest):
     """
     Mount a node
     """
+    node_key = mount_request.node_key
+    node_template_name = mount_request.template_name
+    mount_params_string = mount_request.mount_params_string
+    
     try:
-        success, error = noodle.mount(node_key, node_template_name, mount_params)
+        success, error = noodle.mount(node_key, node_template_name, mount_params_string)
         if not success and error:
-            raise HTTPException(status_code=400, detail=error)
-        return {
-            "success": True,
-            "message": f"Node {node_key} mounted successfully"
-        }
+            raise RuntimeError(error)
+        
     except Exception as e:
-        logger.error(f'Error mounting node: {e}')
-        raise HTTPException(status_code=500, detail=f'Error mounting node: {e}')
+        message = f'Error mounting node: {e}'
+        logger.error(message)
+        raise HTTPException(status_code=500, detail=message)
 
-@router.post("/unmount", response_model=dict)
+@router.post('/unmount', response_model=dict)
 def unmount_node(node_key: str):
     """
     Unmount a node
@@ -79,14 +80,12 @@ def unmount_node(node_key: str):
     try:
         success, error = noodle.unmount(node_key)
         if not success and error:
-            raise HTTPException(status_code=400, detail=error)
-        return {
-            "success": True,
-            "message": f"Node {node_key} unmounted successfully"
-        }
+            raise RuntimeError(error)
+        
     except Exception as e:
-        logger.error(f'Error unmounting node: {e}')
-        raise HTTPException()
+        message = f'Error unmounting node: {e}'
+        logger.error(message)
+        raise HTTPException(status_code=500, detail=message)
 
 
 def parse_target_resource_path(launch_params_str: str, node_key: str) -> str:

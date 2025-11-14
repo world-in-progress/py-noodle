@@ -183,7 +183,7 @@ class Treeger:
     def mount(
         self, node_key: str,
         node_template_name: str | None = None, 
-        mount_params: any = None #TODO: type changing: json string
+        mount_params_string: str = ''
     ) -> tuple[bool, str]:
         # Check if node already exists in db
         if (self._has_node(node_key)):
@@ -194,7 +194,7 @@ class Treeger:
         # If node_template_name is not provided
         # Meaning this is a resource set node (no mount params), not a resource node (with mount params or not)
         # If mount_params are provided for a resource set node, raise a warning and ignore mount_params
-        if not node_template_name and mount_params:
+        if not node_template_name and mount_params_string:
             logger.warning(f'Mount parameters are provided for resource set node "{node_key}", ignoring them')
 
         node_template: ResourceNodeTemplateModule | None = None
@@ -214,7 +214,8 @@ class Treeger:
             # Call resource node mount hook and get launch parameters
             launch_params_json = None
             if node_template:
-                launch_params = node_template.privatization(node_key, mount_params) # launch_params is a json string
+                mount_params = json.loads(mount_params_string) if mount_params_string else {}
+                launch_params = node_template.privatization(node_key, mount_params)
                 node_template.mount(node_key, mount_params)
 
                 if launch_params is not None and not isinstance(launch_params, dict):

@@ -28,3 +28,8 @@ class FileResponse(BaseModel):
     path: str
     media_type: str
     filename: str
+    
+class MountRequest(BaseModel):
+    node_key: str
+    template_name: str
+    mount_params_string: str = ''
