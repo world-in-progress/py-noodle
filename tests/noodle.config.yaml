@@ -1,8 +1,6 @@
 icrms:
-  - tag: cc/ISchema/0.1.0
-    module_path: icrms.ischema
+  - tag: test/INames/0.0.1
+    module_path: tests.icrms.inames
 node_templates:
-  - name: schema
-    module_path: crms.schema
   - name: names
-    module_path: crms.names
+    module_path: tests.crms.names
