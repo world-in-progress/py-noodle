@@ -1,3 +1,4 @@
+import base64
 import httpx
 import logging
 import threading
@@ -8,7 +9,7 @@ from ..noodle import noodle
 from ..config import settings
 from ..node.lock import RWLock
 from ..schemas.lock import LockInfo
-from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, FileResponse, MountRequest
+from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, MountRequest
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -135,10 +136,13 @@ def parse_target_resource_path(launch_params_str: str, node_key: str) -> str:
 #         raise HTTPException(status_code=500, detail=f'Error pushing node: {e}')
 
 @router.post('/pull', response_model=PullResponse)
-def pull_node(template_name: str, target_node_key: str, source_node_key: str, mount_params: str):
+def pull_node(template_name: str, target_node_key: str, source_node_key: str):
     """
     Pull a node from remote resource tree.
     """
+    temp_path = settings.MEMORY_TEMP_PATH / 'pull_cache' / f'pull_{target_node_key.replace(".", "_")}.tar.gz'
+    temp_path.parent.mkdir(parents=True, exist_ok=True)
+    
     try:
         # Check if target node exists
         # TODO: Must let front end know the renamed node key
@@ -175,26 +179,46 @@ def pull_node(template_name: str, target_node_key: str, source_node_key: str, mo
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f'Error parsing packing response: {str(e)}')
 
-            temp_path = settings.MEMORY_TEMP_PATH / 'pull_cache' / f'pull_{target_node_key.replace(".", "_")}.tar.gz'
-            temp_path.parent.mkdir(parents=True, exist_ok=True)
-
-            with open(temp_path, 'wb') as f:
-                f.seek(file_size - 1)
-                f.write(b'\0')
+            # with open(temp_path, 'wb') as f:
+            #     f.seek(file_size - 1)
+            #     f.write(b'\0')
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f'Error pulling node: {e}')
         
-        # Trigger the pull_from operations of the remote noodle to send the packaged content to the local noodle
+        # Trigger the push_to operations of the remote noodle to send the packaged content to the local noodle
         try:
-            pull_from_url = f"{source_noodle_address}/noodle/node/pull_from?node_key={source_key}"
+            push_to_url = f"{source_noodle_address}/noodle/node/push_to?node_key={source_key}"
 
-            with httpx.stream('GET', pull_from_url, timeout=10.0) as response:
-                with open(temp_path, 'wb') as target_file:
-                    for chunk in response.iter_bytes(chunk_size=1024 * 1024):
-                        target_file.write(chunk)
+            with open(temp_path, 'wb') as target_file:
+                    chunk_index = 0
+                    while True:
+                        # Request specific chunk
+                        chunk_url = f"{push_to_url}&chunk_index={chunk_index}"
+                        response = httpx.get(chunk_url, timeout=30.0)
+                        response.raise_for_status()
+                        
+                        try:
+                            chunk_data = response.json()
+                            # Check if required fields exist
+                            if "chunk_data" not in chunk_data:
+                                raise HTTPException(status_code=500, detail="Invalid chunk data format")
+                            
+                            # Write chunk data
+                            chunk_bytes = base64.b64decode(chunk_data["chunk_data"])
+                            target_file.write(chunk_bytes)
+                            
+                            # Check if this is the last chunk
+                            if chunk_data.get("is_last_chunk", False):
+                                break
+                                
+                            chunk_index += 1
+                        except ValueError as e:
+                            # If not JSON format, it might be raw binary data
+                            target_file.write(response.content)
+                            break
 
-            template.unpack(target_node_key, str(temp_path), template_name, mount_params)
+            template.unpack(target_node_key, str(temp_path), template_name)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f'Error pulling node: {e}')
             
@@ -225,7 +249,9 @@ def packing(node_key: str):
             tar_path.parent.mkdir(parents=True, exist_ok=True)
             if not tar_path.exists():
                 _, file_size = template.pack(node_key, str(tar_path))
-                
+
+            else:
+                file_size = tar_path.stat().st_size
             RWLock.lock_node(node_key, 'r', 'l')
             RWLock.lock_node(tar_lock_key, 'r', 'l')
         return PackingResponse(compress_file_size = file_size)
@@ -235,18 +261,23 @@ def packing(node_key: str):
         logger.error(message)
         raise HTTPException(status_code=500, detail=message)
 
-@router.get('/pull_from')
-def pull_from(node_key: str):
-    try:
+@router.get('/push_to')
+def push_to(node_key: str,chunk_index: int = 0, chunk_size: int = 1024*1024):
+    try:        
         source_temp_path = settings.MEMORY_TEMP_PATH / 'pull_cache' / f"{node_key.replace('.', '_')}.tar.gz"
         if not source_temp_path.exists():
             raise HTTPException(status_code=404, detail=f'File not found: {source_temp_path}')
 
-        return FileResponse(
-            path=str(source_temp_path),
-            media_type='application/gzip',
-            filename=source_temp_path.name
-        )
+        with open(source_temp_path, 'rb') as f:
+            f.seek(chunk_index * chunk_size)
+            chunk_data = f.read(chunk_size)
+            
+        import base64
+        return {
+            "chunk_index": chunk_index,
+            "chunk_data": base64.b64encode(chunk_data).decode('utf-8'),
+            "is_last_chunk": len(chunk_data) < chunk_size
+        }
         
     except Exception as e:
         message = f'Error pulling from {source_temp_path}'

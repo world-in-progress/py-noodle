@@ -61,7 +61,7 @@ class ICRMModule:
 class ResourceNodeTemplate:
     crm: Type[T]
     pack: Callable[[str, str], tuple[str, int]] = lambda x, y: ('', 0) # pack(node_key) -> compress file path
-    unpack: Callable[[str, str, str, dict | None], None] = lambda x, y, z, w: None
+    unpack: Callable[[str, str, str| None], None] = lambda x, y, z : None
     unmount: Callable[[str], None] = lambda x: None
     mount: Callable[[str, dict | None], dict | None] = lambda x, y: y
     privatization: Callable[[str, dict | None], dict | None] = lambda x, y: y
@@ -79,7 +79,7 @@ class ResourceNodeTemplateModule:
     _lock: threading.Lock = threading.Lock()
     _crm: Type[T] = None
     _pack: Callable[[str, str], tuple[str, int]] = None
-    _unpack: Callable[[str, str, str, dict], None] = None
+    _unpack: Callable[[str, str, str], None] = None
     _unmount: Callable[[str], None] = None
     _mount: Callable[[str, dict | None], dict | None] = None
     _privatization: Callable[[str, dict | None], dict | None] = None
@@ -118,7 +118,7 @@ class ResourceNodeTemplateModule:
             return self._pack
 
     @property
-    def unpack(self) -> Callable[[str, str, str, dict], None]:
+    def unpack(self) -> Callable[[str, str, str], None]:
         with self._lock:
             if self._unpack is None:
                 self._load_from_module()

@@ -23,11 +23,6 @@ class PullResponse(BaseModel):
 
 class PackingResponse(BaseModel):
     compress_file_size: int
-
-class FileResponse(BaseModel):
-    path: str
-    media_type: str
-    filename: str
     
 class MountRequest(BaseModel):
     node_key: str
