@@ -1,6 +1,0 @@
-icrms:
-  - tag: test/INames/0.0.1
-    module_path: tests.icrms.inames
-node_templates:
-  - name: names
-    module_path: tests.crms.names
