@@ -93,7 +93,7 @@ def PACK(node_key: str, tar_path: str) -> tuple[str, int]:
         
     except Exception as e:
         raise Exception(f"Error packing node {node_key}: {e}")
-def UNPACK(target_node_key: str, tar_path: str, template_name: str, mount_params: dict) -> None:
+def UNPACK(target_node_key: str, tar_path: str, template_name: str) -> None:
     """
     Generic unpack implementation that extracts resource data from a tar file.
     
@@ -101,19 +101,14 @@ def UNPACK(target_node_key: str, tar_path: str, template_name: str, mount_params
         node_key: The node key being unpacked
         tar_path: Path to the compressed tar file
     """
-    try:
-        node_record = noodle._load_node_record(target_node_key, False)
-        if node_record is None:
-            raise Exception(f"Node {target_node_key} not found in local resource tree")
-        
-        launch_params_str = node_record.launch_params
-        launch_params = json.loads(launch_params_str) if launch_params_str else {}
-        target_node_path = launch_params.get('resource_space')
-    
-        Path(target_node_path).mkdir(parents=True, exist_ok=True)
+    try:      
+        name = target_node_key.split('.')[-1]
+        resource_space = Path.cwd() / 'resource' / name
+                    
+        Path(resource_space).mkdir(parents=True, exist_ok=True)
 
         with tarfile.open(tar_path, 'r:gz') as tarf:
-            target_path = Path(target_node_path)
+            target_path = Path(resource_space)
             if target_path.exists() and target_path.is_dir():
                 for item in target_path.iterdir():
                     if item.is_file():
@@ -122,8 +117,16 @@ def UNPACK(target_node_key: str, tar_path: str, template_name: str, mount_params
                         import shutil
                         shutil.rmtree(item)
             
-            tarf.extractall(target_node_path)
+            tarf.extractall(resource_space)
         
-        noodle.mount(target_node_key, node_template_name=template_name, mount_params=mount_params)
+        parent_key = '.'.join(target_node_key.split('.')[:-1])
+        parent_key = parent_key if parent_key else None
+        if parent_key and not noodle._has_node(parent_key):
+            raise ValueError(f'Parent node "{parent_key}" not found in scene for node "{target_node_key}"')
+
+        names_json_path = resource_space / 'names.json'
+        mount_params = json.dumps({'resource_space': str(names_json_path)}, indent=4)
+        noodle._insert_node(target_node_key, parent_key, template_name, mount_params)
+
     except Exception as e:
         raise Exception(f"Error unpacking node {target_node_key}: {e}")
