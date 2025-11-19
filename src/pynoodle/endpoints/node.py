@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from ..noodle import noodle
 from ..config import settings
 from ..node.lock import RWLock
+from ..utils import get_parent_key
 from ..schemas.lock import LockInfo
 from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, MountRequest, PushResponse
 
@@ -114,7 +115,7 @@ def push_node(template_name: str, source_node_key: str, target_node_key: str):
         if template is None:
             raise HTTPException(status_code=404, detail=f'ResourceNodeTemplate "{template_name}" not found in noodle.')
         
-        parent_key = '.'.join(source_node_key.split('.')[:-1])
+        parent_key = get_parent_key(source_node_key)
         parent_node_info = noodle.get_node_info(parent_key)
         if not parent_node_info:
             raise HTTPException(status_code=404, detail=f'Parent of node "{source_node_key}" not found')
@@ -125,10 +126,8 @@ def push_node(template_name: str, source_node_key: str, target_node_key: str):
                 tar_path = settings.MEMORY_TEMP_PATH / 'push_cache' / f'{source_node_key.replace(".", "_")}.tar.gz'
                 tar_path.parent.mkdir(parents=True, exist_ok=True)
                 if not tar_path.exists():
-                    _ , file_size = template.pack(source_node_key, str(tar_path))
-                
-                else:
-                    file_size = tar_path.stat().st_size
+                    template.pack(source_node_key, str(tar_path))
+                    
                 RWLock.lock_node(source_node_key, 'r', 'l')
                 RWLock.lock_node(tar_lock_key, 'r', 'l')
         except Exception as e:
@@ -170,7 +169,6 @@ def push_node(template_name: str, source_node_key: str, target_node_key: str):
         message = f'Error pushing node: {e}'
         logger.error(message)
         raise HTTPException(status_code=500, detail=message)
-    
 
 @router.post('/pull_from')
 def pull_node(template_name: str, target_node_key: str, source_node_key:str, chunk_data:str, chunk_index:int, is_last_chunk: bool):
@@ -229,7 +227,7 @@ def pull_node(template_name: str, target_node_key: str, source_node_key: str):
             raise HTTPException(status_code=404, detail=f'ResourceNodeTemplate "{template_name}" not found in noodle.')
 
         # Check if parent node exists
-        parent_key = '.'.join(target_node_key.split('.')[:-1])
+        parent_key = get_parent_key(target_node_key)
         parent_node_info = noodle.get_node_info(parent_key)
         if not parent_node_info:
             raise HTTPException(status_code=404, detail=f'Parent of node "{target_node_key}" not found')
@@ -245,16 +243,6 @@ def pull_node(template_name: str, target_node_key: str, source_node_key: str):
                 raise HTTPException(status_code=404, detail=f'Source node "{source_key}" not found in remote noodle.')
             if response.status_code != 200:
                 raise HTTPException(status_code=500, detail=f'Error pulling node: {response.text}')
-            
-            try:
-                packing_result = response.json()
-                file_size = packing_result.get('compress_file_size', 0)
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f'Error parsing packing response: {str(e)}')
-
-            # with open(temp_path, 'wb') as f:
-            #     f.seek(file_size - 1)
-            #     f.write(b'\0')
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f'Error pulling node: {e}')

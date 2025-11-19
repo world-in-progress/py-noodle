@@ -8,6 +8,7 @@ from typing import TypeVar, Literal, Type, Generator
 
 from .lock import RWLock
 from ..config import settings
+from ..utils import get_parent_key
 from ..schemas.lock import LockInfo
 from ..schemas.node import ResourceNodeInfo
 from ..module_cache import ModuleCache, ResourceNodeTemplateModule
@@ -48,6 +49,15 @@ class Treeger:
             conn.execute(f'CREATE INDEX IF NOT EXISTS idx_{PARENT_KEY} ON {NODE_TABLE}({PARENT_KEY})')
             conn.execute(f'CREATE INDEX IF NOT EXISTS idx_{TEMPLATE_NAME} ON {NODE_TABLE}({TEMPLATE_NAME})')
             conn.commit()
+            
+            # Create root node if it doesn't exist
+            cursor = conn.execute(f'SELECT 1 FROM {NODE_TABLE} WHERE {NODE_KEY} = ?', ('.',))
+            if cursor.fetchone() is None:
+                conn.execute(f"""
+                    INSERT INTO {NODE_TABLE} ({NODE_KEY}, {PARENT_KEY}, {TEMPLATE_NAME})
+                    VALUES (?, ?, ?)
+                """, ('.', None, None))
+                conn.commit()
     
     @contextmanager
     def _connect_db(self):
@@ -159,7 +169,7 @@ class Treeger:
 
         try:
             # Add node to the resource tree
-            parent_key = '.'.join(node_key.split('.')[:-1])
+            parent_key = get_parent_key(node_key)
             access_info = f'{access_address}::{remote_node_key}'
             with self._connect_db() as conn:
                 cursor = conn.cursor()
@@ -206,8 +216,7 @@ class Treeger:
                     raise ValueError(f'ResourceNodeTemplate "{node_template_name}" not found in noodle module cache')
             
             # Validate parent key
-            parent_key = '.'.join(node_key.split('.')[:-1])
-            parent_key = parent_key if parent_key else None
+            parent_key = get_parent_key(node_key)
             if parent_key and not self._has_node(parent_key):
                 raise ValueError(f'Parent node "{parent_key}" not found in scene for node "{node_key}"')
 
@@ -337,6 +346,7 @@ class Treeger:
         access_mode: Literal['lr', 'lw', 'pr', 'pw'],
         timeout: float | None = None,
         retry_interval: float = 1.0,
+        *,
         lock_id: str | None = None
     ) -> Generator[T, None, None]:
         """Context manager to connect to a node"""

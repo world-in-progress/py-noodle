@@ -10,7 +10,7 @@ from pynoodle import noodle, NOODLE_INIT, NOODLE_TERMINATE
 
 logging.basicConfig(level=logging.INFO)
 
-NODE_KEY = 'root.names'
+NODE_KEY = '.names'
 # NODE_KEY = 'http://127.0.0.1:8000::nameSet'
 
 if __name__ == '__main__':
@@ -18,11 +18,8 @@ if __name__ == '__main__':
     
     print('\n----- Mount nodes ------\n')
     
-    # Mount local node: root
-    noodle.mount('root')
-    
-    # Mount node: root.names
-    if NODE_KEY == 'root.names':
+    # Mount node: .names
+    if NODE_KEY == '.names':
         noodle.mount(NODE_KEY, 'names')
     
     print('\n----- Access node ------\n')
@@ -66,10 +63,9 @@ if __name__ == '__main__':
     
     noodle.unlink(NODE_KEY, lock_id)
 
-    if NODE_KEY == 'root.names':
+    if NODE_KEY == '.names':
         print('\n----- Unmount nodes ------\n')
         
-        noodle.unmount('root.names')
-        noodle.unmount('root')
+        noodle.unmount('.names')
     
     NOODLE_TERMINATE()
