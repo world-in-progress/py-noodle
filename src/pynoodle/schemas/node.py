@@ -28,3 +28,7 @@ class MountRequest(BaseModel):
     node_key: str
     template_name: str
     mount_params_string: str = ''
+
+class PushResponse(BaseModel):
+    success: bool
+    message: str
