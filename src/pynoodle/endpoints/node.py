@@ -9,7 +9,7 @@ from ..noodle import noodle
 from ..config import settings
 from ..node.lock import RWLock
 from ..schemas.lock import LockInfo
-from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, MountRequest
+from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, MountRequest, PushResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -100,41 +100,115 @@ def parse_target_resource_path(launch_params_str: str, node_key: str) -> str:
     except json.JSONDecodeError:
         raise ValueError(f'Invalid launch parameters for node "{node_key}"')
 
-# @router.post('/push', response_model=PushResponse)
-# def push_node(source_node_key: str, target_node_key: str):
-#     """
-#     Push a node to remote resource tree.
-#     """
-#     node_info = noodle.get_node_info(source_node_key)
-#     if not node_info:
-#         raise ValueError(f'Node "{source_node_key}" not found')
+@router.post('/push', response_model=PushResponse)
+def push_node(template_name: str, source_node_key: str, target_node_key: str):
+    """
+    Push a node to remote resource tree.
+    """
+    try:
+        source_node = noodle.get_node_info(source_node_key)
+        if source_node is None:
+            raise HTTPException(status_code=404, detail=f'Source node "{source_node_key}" not found')
+        
+        template = noodle.get_template(template_name)
+        if template is None:
+            raise HTTPException(status_code=404, detail=f'ResourceNodeTemplate "{template_name}" not found in noodle.')
+        
+        parent_key = '.'.join(source_node_key.split('.')[:-1])
+        parent_node_info = noodle.get_node_info(parent_key)
+        if not parent_node_info:
+            raise HTTPException(status_code=404, detail=f'Parent of node "{source_node_key}" not found')
+        
+        try:
+            tar_lock_key = f'{source_node_key}_tar'
+            with threading.Lock():
+                tar_path = settings.MEMORY_TEMP_PATH / 'push_cache' / f'{source_node_key.replace(".", "_")}.tar.gz'
+                tar_path.parent.mkdir(parents=True, exist_ok=True)
+                if not tar_path.exists():
+                    _ , file_size = template.pack(source_node_key, str(tar_path))
+                
+                else:
+                    file_size = tar_path.stat().st_size
+                RWLock.lock_node(source_node_key, 'r', 'l')
+                RWLock.lock_node(tar_lock_key, 'r', 'l')
+        except Exception as e:
+            message = f'Error pushing node: {e}'
+            logger.error(message)
+            raise HTTPException(status_code=500, detail=message)
     
-#     launch_params_str = getattr(node_info, 'launch_params', None)
-#     if not launch_params_str:
-#             raise ValueError(f'Node "{source_node_key}" has no launch parameters')
+        try:
+            target_node_address, target_key = target_node_key.split('::')
+            pull_from_url = f"{target_node_address}/noodle/node/pull_from"
+
+            chunk_size = 1024 * 1024
+            with open(tar_path, 'rb') as f:
+                chunk_index = 0
+                while True:
+                    chunk_data = f.read(chunk_size)
+                    if not chunk_data:
+                        break
+                    
+                    encoded_chunk = base64.b64encode(chunk_data).decode('utf-8')
+                    params = {
+                        'template_name': template_name,
+                        'target_node_key': target_key,
+                        'source_node_key': source_node_key,
+                        'chunk_data': encoded_chunk,
+                        'chunk_index': chunk_index,
+                        'is_last_chunk': len(chunk_data) < chunk_size
+                    }
+
+                    response = httpx.post(pull_from_url, params=params, timeout=30.0)
+                    response.raise_for_status()
+                    chunk_index += 1
+            return PushResponse(success=True, message='Push successful')
+        except Exception as e:
+            message = f'Error pushing node: {e}'
+            logger.error(message)
+            raise HTTPException(status_code=500, detail=message)
+    except Exception as e:
+        message = f'Error pushing node: {e}'
+        logger.error(message)
+        raise HTTPException(status_code=500, detail=message)
     
-#     resource_path = parse_target_resource_path(launch_params_str, source_node_key)
 
-#     template_name = node_info.template_name
-#     if template_name is None:
-#         raise HTTPException(status_code=400, detail=f'Node "{source_node_key}" is a resource set, cannot be pushed')
-#     template = noodle.get_template(template_name)
+@router.post('/pull_from')
+def pull_node(template_name: str, target_node_key: str, source_node_key:str, chunk_data:str, chunk_index:int, is_last_chunk: bool):
+    try:
+        source_temp_path = settings.MEMORY_TEMP_PATH / 'push_cache' / f'{target_node_key}.tar.gz'
+        source_temp_path.parent.mkdir(parents=True, exist_ok=True)
 
-#     try:
-#         compress_file_path = template.pack(source_node_key)
-#         node_info = noodle.get_node_info(source_node_key)
-#         mount_params_str = getattr(node_info, 'mount_params', '')
+        # Check if target node exists
+        target_node = noodle.get_node_info(target_node_key)
+        if target_node is not None:
+            target_node_key = target_node.node_key + '_copy'
 
-#         return PushResponse(
-#             success=True,
-#             message="Node pushed successfully.",
-#             target_node_key=target_node_key,
-#             mount_params=mount_params_str,
-#             compress_file_path=compress_file_path
-#         )
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f'Error pushing node: {e}')
+        with open(source_temp_path, 'ab') as f:
+            f.seek(chunk_index * 1024 * 1024)
+            chunck_bytes = base64.b64decode(chunk_data)
+            f.write(chunck_bytes)
+        
+        if is_last_chunk:
+            template = noodle.get_template(template_name)
+            if template is None:
+                raise HTTPException(status_code=404, detail=f'ResourceNodeTemplate "{template_name}" not found in noodle.')
+            
+            template.unpack(target_node_key, str(source_temp_path), template_name)
 
+    except Exception as e:
+        message = f'Error receiving pushed data: {e}'
+        logger.error(message)
+        raise HTTPException(status_code=500, detail=message)
+    finally:
+        tar_lock_key = f'{source_node_key}_tar'
+        RWLock.remove_lock(source_node_key)
+
+        with threading.Lock():
+            RWLock.remove_lock(tar_lock_key)
+            if not RWLock.is_node_locked(tar_lock_key):
+                source_temp_path.unlink()
+                source_temp_path.parent.rmdir()
+        
 @router.post('/pull', response_model=PullResponse)
 def pull_node(template_name: str, target_node_key: str, source_node_key: str):
     """
@@ -145,7 +219,6 @@ def pull_node(template_name: str, target_node_key: str, source_node_key: str):
     
     try:
         # Check if target node exists
-        # TODO: Must let front end know the renamed node key
         target_node = noodle.get_node_info(target_node_key)
         if target_node is not None:
             target_node_key = target_node.node_key + '_copy'
@@ -157,15 +230,15 @@ def pull_node(template_name: str, target_node_key: str, source_node_key: str):
 
         # Check if parent node exists
         parent_key = '.'.join(target_node_key.split('.')[:-1])
-        paren_node_info = noodle.get_node_info(parent_key)
-        if not paren_node_info:
+        parent_node_info = noodle.get_node_info(parent_key)
+        if not parent_node_info:
             raise HTTPException(status_code=404, detail=f'Parent of node "{target_node_key}" not found')
         
         source_noodle_address, source_key = source_node_key.split('::')
         
         # Trigger the pack operation on the remote noodle to package the resource node of the remote noodle.
         remote_packing_url = f"{source_noodle_address}/noodle/node/packing"
-        packing_params = {'node_key': source_key, 'template_name': template_name}
+        packing_params = {'node_key': source_key}
         try:
             response = httpx.post(remote_packing_url, params = packing_params, timeout=10.0)
             if response.status_code == 404:
