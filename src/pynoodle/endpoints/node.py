@@ -170,7 +170,7 @@ def push_node(template_name: str, source_node_key: str, target_node_key: str):
         logger.error(message)
         raise HTTPException(status_code=500, detail=message)
 
-@router.post('/pull_from')
+@router.post('/pull_from', include_in_schema=False)
 def pull_node(template_name: str, target_node_key: str, source_node_key:str, chunk_data:str, chunk_index:int, is_last_chunk: bool):
     try:
         source_temp_path = settings.MEMORY_TEMP_PATH / 'push_cache' / f'{target_node_key}.tar.gz'
@@ -322,7 +322,7 @@ def packing(node_key: str):
         logger.error(message)
         raise HTTPException(status_code=500, detail=message)
 
-@router.get('/push_to')
+@router.get('/push_to', include_in_schema=False)
 def push_to(node_key: str,chunk_index: int = 0, chunk_size: int = 1024*1024):
     try:        
         source_temp_path = settings.MEMORY_TEMP_PATH / 'pull_cache' / f"{node_key.replace('.', '_')}.tar.gz"
