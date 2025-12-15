@@ -21,8 +21,6 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     NOODLE_INIT(app)
 
-    noodle.mount('root')
-
     noodle.mount('nameSet', 'names')
     with noodle.connect(INames, 'nameSet', 'lw') as names:
         names.add_name('Alice')
