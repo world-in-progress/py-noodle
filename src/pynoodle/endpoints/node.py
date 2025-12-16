@@ -1,5 +1,6 @@
 import base64
 import httpx
+import shutil
 import logging
 import threading
 from typing import Literal
@@ -293,8 +294,15 @@ def pull_node(template_name: str, target_node_key: str, source_node_key: str):
         with threading.Lock():
             if temp_path.exists():
                 temp_path.unlink()
-                temp_path.parent.rmdir()
-                
+            
+            # Try to remove the parent directory if it is empty
+            try:
+                if temp_path.parent.exists() and not any(temp_path.parent.iterdir()):
+                    temp_path.parent.rmdir()
+            except OSError:
+                # Ignore if directory is not empty or other OS errors
+                pass
+        
 @router.post('/packing', response_model=PackingResponse)
 def packing(node_key: str):
     try:
@@ -306,6 +314,7 @@ def packing(node_key: str):
         tar_lock_key = f'{node_key}_tar'
 
         with threading.Lock():
+            print(f"开始打包了：{node_key}")
             tar_path = settings.MEMORY_TEMP_PATH / 'pull_cache' / f"{node_key.replace('.', '_')}.tar.gz"
             tar_path.parent.mkdir(parents=True, exist_ok=True)
             if not tar_path.exists():
@@ -352,4 +361,8 @@ def push_to(node_key: str,chunk_index: int = 0, chunk_size: int = 1024*1024):
             RWLock.remove_lock(tar_lock_key)
             if not RWLock.is_node_locked(tar_lock_key):
                 source_temp_path.unlink()
+                try:
+                    shutil.rmtree(source_temp_path.parent)
+                except OSError as e:
+                    print(f"Error removing directory: {e}")
                 source_temp_path.parent.rmdir()

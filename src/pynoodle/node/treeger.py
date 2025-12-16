@@ -94,6 +94,24 @@ class Treeger:
             ))
             conn.commit()
 
+    def _update_node(
+        self, node_key: str,
+        parent_key: str | None, template_name: str, launch_params: str,
+    ) -> None:
+        """Update an existing node in the database"""
+        with self._connect_db() as conn:
+            conn.execute(f"""
+                UPDATE {NODE_TABLE}
+                SET {PARENT_KEY} = ?, {TEMPLATE_NAME} = ?, {LAUNCH_PARAMS} = ?
+                WHERE {NODE_KEY} = ?
+            """, (
+                parent_key if parent_key else None,
+                template_name,
+                launch_params if launch_params else None,
+                node_key
+            ))
+            conn.commit()
+
     def _delete_node(self, node_key: str) -> None:
         """Delete a node from the database"""
         with self._connect_db() as conn:
@@ -477,7 +495,7 @@ class Treeger:
         else:
             does_lock_exist = RWLock.has_lock(lock_id)
             node_server_address = 'memory://' + node_key.replace('.', '_') + f'_{lock_id}'
-            
+
         if not does_lock_exist:
             raise ValueError(f'Lock {lock_id} not found for node {node_key}')
         
@@ -535,4 +553,4 @@ class Treeger:
             # Remove the lock
             RWLock.remove_lock(lock_id)
             return True, error
-        
+
