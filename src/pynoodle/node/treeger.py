@@ -133,7 +133,7 @@ class Treeger:
         """Load a single node from the database"""
         with self._connect_db() as conn:
             cursor = conn.execute(f"""
-                SELECT {NODE_KEY}, {TEMPLATE_NAME}, {LAUNCH_PARAMS}, {PARENT_KEY}, {ACCESS_INFO}
+                SELECT {NODE_KEY}, {TEMPLATE_NAME}, {LAUNCH_PARAMS}, {MOUNT_PARAMS}, {PARENT_KEY}, {ACCESS_INFO}
                 FROM {NODE_TABLE}
                 WHERE {NODE_KEY} = ?
             """, (node_key,))
@@ -146,6 +146,7 @@ class Treeger:
             parent_key = row[PARENT_KEY] if row[PARENT_KEY] else None
             access_url = row[ACCESS_INFO] if row[ACCESS_INFO] else None
             launch_params = row[LAUNCH_PARAMS] if row[LAUNCH_PARAMS] else ''
+            mount_params = row[MOUNT_PARAMS] if row[MOUNT_PARAMS] else ''
             template = self.module_cache.templates.get(row[TEMPLATE_NAME], None) if row[TEMPLATE_NAME] else None
 
             # Create ResourceNode record
@@ -154,7 +155,8 @@ class Treeger:
                 template=template,
                 parent_key=parent_key,
                 access_info=access_url,
-                launch_params=launch_params
+                launch_params=launch_params,
+                mount_params=mount_params
             )
             
             # If not cascade, return the node with no children loaded
