@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import uvicorn
 import logging
 from fastapi import FastAPI
@@ -21,7 +22,13 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     NOODLE_INIT(app)
 
-    noodle.mount('.schemaSet', 'schema')
+    # Mount schema node with custom parameters
+    mount_params = {
+        'buffer_size': 2048,
+        'max_connections': 50
+    }
+    
+    noodle.mount('.schemaSet', 'schema', json.dumps(mount_params))
     with noodle.connect(ISchema, '.schemaSet', 'lw') as schema:
         schema.update_info({'name': 'TestSchema_8002'})
         schema.update_info({'epsg': '4326'})
@@ -56,4 +63,4 @@ app = create_app()
 
 if __name__ == '__main__':
     # Run using the app instance so the file can be executed directly
-    uvicorn.run(app, host='127.0.0.1', port=8002)
+    uvicorn.run(app, host='0.0.0.0', port=8002)

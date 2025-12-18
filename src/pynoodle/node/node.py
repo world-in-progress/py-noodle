@@ -30,6 +30,7 @@ class ResourceNodeRecord:
     node_key: str
     access_info: str | None = None
     launch_params: str | None = None
+    mount_params: str | None = None
     template: ResourceNodeTemplateModule | None = None   # None if this is a resource set node, not a resource node
     
     parent_key: str | None = None

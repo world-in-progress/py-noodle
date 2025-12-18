@@ -24,10 +24,18 @@ def MOUNT(node_key: str, params: dict | None) -> dict | None:
         resource_space.parent.mkdir(parents=True, exist_ok=True)
         default_info = {
             'name': '',
-            'epsg': '',
+            'epsg': 4326,
             'alignment_origin': [0.0, 0.0],
             'grid_info': []
         }
+        
+        # Use params to initialize default info if provided
+        if params and isinstance(params, dict):
+            # Only update keys that exist in default_info to avoid polluting schema with unrelated params
+            for key in default_info.keys():
+                if key in params:
+                    default_info[key] = params[key]
+
         with open(resource_space, 'w') as f:
             json.dump(default_info, f, indent=4)
     
@@ -78,10 +86,6 @@ def PRIVATIZATION(node_key: str, mount_params: dict | None) -> dict | None:
             'resource_space': str(resource_space),
         }
         
-        # Merge with provided mount parameters if any
-        if mount_params and isinstance(mount_params, dict):
-            launch_params.update(mount_params)
-        
         return launch_params
         
     except Exception as e:
@@ -104,6 +108,7 @@ def PACK(node_key: str, tar_path: str) -> tuple[str, int]:
         launch_params = json.loads(launch_params_str)
         target_resource_path = launch_params.get('resource_space')
         resource_path = Path(target_resource_path)
+        mount_params_str = node_record.mount_params
         
         with tarfile.open(tar_path, 'w:gz') as tarf:
             if resource_path.is_file():
@@ -115,6 +120,14 @@ def PACK(node_key: str, tar_path: str) -> tuple[str, int]:
                     if file_path.is_file():
                         arcname = file_path.relative_to(resource_path.parent)
                         tarf.add(file_path, arcname=arcname)
+            
+            # Add mount_params to the tar file as a separate file
+            if mount_params_str:
+                mount_params_path = Path(tar_path).parent / 'mount_params.json'
+                with open(mount_params_path, 'w') as f:
+                    f.write(mount_params_str)
+                tarf.add(mount_params_path, arcname='mount_params.json')
+                mount_params_path.unlink() # Clean up temporary file
         
         file_size = Path(tar_path).stat().st_size
         return str(tar_path), file_size
@@ -137,6 +150,8 @@ def UNPACK(target_node_key: str, tar_path: str, template_name: str) -> None:
                     
         Path(resource_space).mkdir(parents=True, exist_ok=True)
 
+        mount_params_str = None
+
         with tarfile.open(tar_path, 'r:gz') as tarf:
             target_path = Path(resource_space)
             if target_path.exists() and target_path.is_dir():
@@ -148,6 +163,16 @@ def UNPACK(target_node_key: str, tar_path: str, template_name: str) -> None:
                         shutil.rmtree(item)
             
             tarf.extractall(resource_space)
+            
+            # Check for mount_params.json
+            try:
+                mount_params_file = resource_space / 'mount_params.json'
+                if mount_params_file.exists():
+                    with open(mount_params_file, 'r') as f:
+                        mount_params_str = f.read()
+                    mount_params_file.unlink() # Remove it after reading
+            except Exception as e:
+                print(f"Warning: Failed to read mount_params.json: {e}")
         
         parent_key = '.'.join(target_node_key.split('.')[:-1])
         parent_key = parent_key if parent_key else None
@@ -155,15 +180,15 @@ def UNPACK(target_node_key: str, tar_path: str, template_name: str) -> None:
             raise ValueError(f'Parent node "{parent_key}" not found in scene for node "{target_node_key}"')
 
         schema_json_path = resource_space / 'schema.json'
-        mount_params = json.dumps({'resource_space': str(schema_json_path)}, indent=4)
+        launch_params = json.dumps({'resource_space': str(schema_json_path)}, indent=4)
         
         # Check if node already exists
         if noodle._has_node(target_node_key):
             # Update existing node to handle potential changes in parent_key or params
-            noodle._update_node(target_node_key, parent_key, template_name, mount_params)
+            noodle._update_node(target_node_key, parent_key, template_name, launch_params, mount_params_str)
         else:
             # Insert new node
-            noodle._insert_node(target_node_key, parent_key, template_name, mount_params)
+            noodle._insert_node(target_node_key, parent_key, template_name, launch_params, mount_params_str)
 
     except Exception as e:
         raise Exception(f"Error unpacking node {target_node_key}: {e}")
