@@ -23,6 +23,7 @@ NODE_KEY = 'node_key'
 PARENT_KEY = 'parent_key'
 LAUNCH_PARAMS = 'launch_params'
 TEMPLATE_NAME = 'template_name'
+MOUNT_PARAMS = 'mount_params'
 ACCESS_INFO = 'access_info' # access info = access address :: remote node key
 
 class Treeger:
@@ -42,6 +43,7 @@ class Treeger:
                     {NODE_KEY} TEXT PRIMARY KEY,
                     {ACCESS_INFO} TEXT DEFAULT NULL,
                     {LAUNCH_PARAMS} TEXT DEFAULT NULL,
+                    {MOUNT_PARAMS} TEXT DEFAULT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY ({PARENT_KEY}) REFERENCES {NODE_TABLE} ({NODE_KEY}) ON DELETE CASCADE
                 )
@@ -78,36 +80,38 @@ class Treeger:
 
     def _insert_node(
         self, node_key: str,
-        parent_key: str | None, template_name: str, launch_params: str,
+        parent_key: str | None, template_name: str, launch_params: str, mount_params: str = None
     ) -> None:
         """Insert a new node into the database"""
         with self._connect_db() as conn:
             # Add node to the node table
             conn.execute(f"""
-                INSERT INTO {NODE_TABLE} ({NODE_KEY}, {TEMPLATE_NAME}, {PARENT_KEY}, {LAUNCH_PARAMS})
-                VALUES (?, ?, ?, ?)
+                INSERT INTO {NODE_TABLE} ({NODE_KEY}, {TEMPLATE_NAME}, {PARENT_KEY}, {LAUNCH_PARAMS}, {MOUNT_PARAMS})
+                VALUES (?, ?, ?, ?, ?)
             """, (
                 node_key,
                 template_name,
                 parent_key if parent_key else None,
-                launch_params if launch_params else None
+                launch_params if launch_params else None,
+                mount_params if mount_params else None
             ))
             conn.commit()
 
     def _update_node(
         self, node_key: str,
-        parent_key: str | None, template_name: str, launch_params: str,
+        parent_key: str | None, template_name: str, launch_params: str, mount_params: str = None
     ) -> None:
         """Update an existing node in the database"""
         with self._connect_db() as conn:
             conn.execute(f"""
                 UPDATE {NODE_TABLE}
-                SET {PARENT_KEY} = ?, {TEMPLATE_NAME} = ?, {LAUNCH_PARAMS} = ?
+                SET {PARENT_KEY} = ?, {TEMPLATE_NAME} = ?, {LAUNCH_PARAMS} = ?, {MOUNT_PARAMS} = ?
                 WHERE {NODE_KEY} = ?
             """, (
                 parent_key if parent_key else None,
                 template_name,
                 launch_params if launch_params else None,
+                mount_params if mount_params else None,
                 node_key
             ))
             conn.commit()
@@ -251,7 +255,7 @@ class Treeger:
                 launch_params_json = json.dumps(launch_params, indent=4) if launch_params else None
 
             # If all validations pass, insert node into db
-            self._insert_node(node_key, parent_key, node_template_name, launch_params_json)
+            self._insert_node(node_key, parent_key, node_template_name, launch_params_json, mount_params_string)
 
             logger.info(f'Successfully mounted node "{node_key}"')
             return True, ''

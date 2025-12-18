@@ -24,10 +24,18 @@ def MOUNT(node_key: str, params: dict | None) -> dict | None:
         resource_space.parent.mkdir(parents=True, exist_ok=True)
         default_info = {
             'name': '',
-            'epsg': '',
+            'epsg': 4326,
             'alignment_origin': [0.0, 0.0],
             'grid_info': []
         }
+        
+        # Use params to initialize default info if provided
+        if params and isinstance(params, dict):
+            # Only update keys that exist in default_info to avoid polluting schema with unrelated params
+            for key in default_info.keys():
+                if key in params:
+                    default_info[key] = params[key]
+
         with open(resource_space, 'w') as f:
             json.dump(default_info, f, indent=4)
     
@@ -77,10 +85,6 @@ def PRIVATIZATION(node_key: str, mount_params: dict | None) -> dict | None:
         launch_params = {
             'resource_space': str(resource_space),
         }
-        
-        # Merge with provided mount parameters if any
-        if mount_params and isinstance(mount_params, dict):
-            launch_params.update(mount_params)
         
         return launch_params
         

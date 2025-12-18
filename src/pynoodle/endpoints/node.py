@@ -314,7 +314,6 @@ def packing(node_key: str):
         tar_lock_key = f'{node_key}_tar'
 
         with threading.Lock():
-            print(f"开始打包了：{node_key}")
             tar_path = settings.MEMORY_TEMP_PATH / 'pull_cache' / f"{node_key.replace('.', '_')}.tar.gz"
             tar_path.parent.mkdir(parents=True, exist_ok=True)
             if not tar_path.exists():
