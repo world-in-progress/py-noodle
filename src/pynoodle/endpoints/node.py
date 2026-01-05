@@ -12,7 +12,7 @@ from ..config import settings
 from ..node.lock import RWLock
 from ..utils import get_parent_key
 from ..schemas.lock import LockInfo
-from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, MountRequest, PushResponse
+from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, MountRequest, PushResponse, MountResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ def unlink_node(node_key: str, lock_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Error unlinking node: {e}')
 
-@router.post('/mount')
+@router.post('/mount', response_model=MountResponse)
 def mount_node(mount_request: MountRequest):
     """
     Mount a node
@@ -74,6 +74,20 @@ def mount_node(mount_request: MountRequest):
             # Create the directory if it doesn't exist
             resource_space.mkdir(parents=True, exist_ok=True)
             logger.info(f'Created empty folder directly: {resource_space}')
+            
+            # Add node to database as a resource set node (no template, no mount params)
+            parent_key = get_parent_key(node_key)
+            if parent_key and not noodle.has_node(parent_key):
+                # Ensure parent exists in the tree
+                try:
+                    noodle.mount(parent_key)
+                except Exception:
+                    pass  # If parent can't be mounted, continue anyway
+            
+            # Insert the node as a resource set node (template_name=None, mount_params=mount_params_string)
+            success, error = noodle.mount(node_key, None, mount_params_string)
+            if not success and error:
+                raise RuntimeError(error)
         else:
             # Ensure parent nodes exist recursively
             if '.' in node_key:
@@ -100,6 +114,9 @@ def mount_node(mount_request: MountRequest):
             success, error = noodle.mount(node_key, node_template_name, mount_params_string)
             if not success and error:
                 raise RuntimeError(error)
+        
+        # Return success response
+        return MountResponse(success=True, message='Node mounted successfully', node_key=node_key)
         
     except Exception as e:
         message = f'Error mounting node: {e}'
