@@ -4,6 +4,7 @@ import shutil
 import logging
 import threading
 from typing import Literal
+from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from ..noodle import noodle
@@ -64,9 +65,41 @@ def mount_node(mount_request: MountRequest):
     mount_params_string = mount_request.mount_params_string
     
     try:
-        success, error = noodle.mount(node_key, node_template_name, mount_params_string)
-        if not success and error:
-            raise RuntimeError(error)
+        # If template_name is empty or None, create an empty folder directly
+        if not node_template_name or node_template_name.strip() == '':
+            # Create folder directly without using noodle framework
+            name = node_key.split('.')[-1]
+            resource_space = Path.cwd() / 'resource' / name
+            
+            # Create the directory if it doesn't exist
+            resource_space.mkdir(parents=True, exist_ok=True)
+            logger.info(f'Created empty folder directly: {resource_space}')
+        else:
+            # Ensure parent nodes exist recursively
+            if '.' in node_key:
+                parent_key = node_key.rsplit('.', 1)[0]
+                if parent_key and parent_key != '.':
+                    parts = parent_key.split('.')
+                    current_path = parts[0]
+                    
+                    # Try to mount the first part if it's not empty (and not just '.')
+                    if current_path and not noodle.has_node(current_path):
+                        try:
+                            noodle.mount(current_path)
+                        except Exception:
+                            pass
+
+                    for part in parts[1:]:
+                        current_path += f'.{part}'
+                        try:
+                            if not noodle.has_node(current_path):
+                                noodle.mount(current_path)
+                        except Exception:
+                            pass
+
+            success, error = noodle.mount(node_key, node_template_name, mount_params_string)
+            if not success and error:
+                raise RuntimeError(error)
         
     except Exception as e:
         message = f'Error mounting node: {e}'
