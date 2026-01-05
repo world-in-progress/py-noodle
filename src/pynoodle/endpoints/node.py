@@ -68,8 +68,13 @@ def mount_node(mount_request: MountRequest):
         # If template_name is empty or None, create an empty folder directly
         if not node_template_name or node_template_name.strip() == '':
             # Create folder directly without using noodle framework
-            name = node_key.split('.')[-1]
-            resource_space = Path.cwd() / 'resource' / name
+            # Handle the node key to create the appropriate directory structure
+            node_parts = [part for part in node_key.split('.') if part]  # Remove empty parts
+            
+            # Build path from node parts, excluding the last part which is the current node
+            resource_space = Path.cwd() / 'resource'
+            for part in node_parts:
+                resource_space = resource_space / part
             
             # Create the directory if it doesn't exist
             resource_space.mkdir(parents=True, exist_ok=True)
