@@ -37,3 +37,6 @@ class MountResponse(BaseModel):
 class PushResponse(BaseModel):
     success: bool
     message: str
+
+class MountParamsResponse(BaseModel):
+    mount_params: str

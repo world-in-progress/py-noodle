@@ -12,7 +12,7 @@ from ..config import settings
 from ..node.lock import RWLock
 from ..utils import get_parent_key
 from ..schemas.lock import LockInfo
-from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, MountRequest, PushResponse, MountResponse
+from ..schemas.node import ResourceNodeInfo, UnlinkInfo, PullResponse, PackingResponse, MountRequest, PushResponse, MountResponse, MountParamsResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -27,6 +27,22 @@ def get_node_info(node_key: str, child_start_index: int = 0, child_end_index: in
     except Exception as e:
         logger.error(f'Error fetching node info: {e}')
         raise HTTPException(status_code=500, detail='Internal Server Error')
+
+@router.get('/mount_params', response_model=MountParamsResponse)
+def get_node_mount_params(node_key: str):
+    """
+    Get mount parameters for a node
+    """
+    try:
+        mount_params = noodle.get_node_mount_params(node_key)
+        if mount_params is None:
+            raise HTTPException(status_code=404, detail=f'Node "{node_key}" not found')
+
+        return MountParamsResponse(mount_params=mount_params)
+    except Exception as e:
+        message = f'Error getting mount parameters: {e}'
+        logger.error(message)
+        raise HTTPException(status_code=500, detail=message)
 
 @router.get('/link', response_model=LockInfo)
 def link_node(icrm_tag: str, node_key: str, access_mode: Literal['r', 'w']):
