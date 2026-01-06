@@ -39,4 +39,5 @@ class PushResponse(BaseModel):
     message: str
 
 class MountParamsResponse(BaseModel):
+    template_name: str
     mount_params: str

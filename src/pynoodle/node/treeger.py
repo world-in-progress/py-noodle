@@ -321,14 +321,16 @@ class Treeger:
                 RWLock.unlock_nodes([node.node_key for node in nodes_to_delete])
             return False, str(e)
 
-    def get_node_mount_params(self, node_key: str, template_name: str) -> str | None:
+    def get_node_mount_params(self, node_key: str) -> str | None:
         """Get mount parameters for a node from the database"""
         with self._connect_db() as conn:
-            cursor = conn.execute(f"SELECT {MOUNT_PARAMS} FROM {NODE_TABLE} WHERE {NODE_KEY} = ? AND {TEMPLATE_NAME} = ?", (node_key, template_name))
+            cursor = conn.execute(f"SELECT {MOUNT_PARAMS}, {TEMPLATE_NAME} FROM {NODE_TABLE} WHERE {NODE_KEY} = ?", (node_key,))
             row = cursor.fetchone()
             if row is None:
-                return None
-            return row[MOUNT_PARAMS] if row[MOUNT_PARAMS] else None
+                return None, None
+            mount_params = row[MOUNT_PARAMS] if row[MOUNT_PARAMS] else None
+            template_name = row[TEMPLATE_NAME] if row[TEMPLATE_NAME] else None
+            return mount_params, template_name
 
     def _get_node(
         self,

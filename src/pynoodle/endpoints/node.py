@@ -29,21 +29,19 @@ def get_node_info(node_key: str, child_start_index: int = 0, child_end_index: in
         raise HTTPException(status_code=500, detail='Internal Server Error')
 
 @router.get('/mount_params', response_model=MountParamsResponse)
-def get_node_mount_params(node_key: str, template_name: str | None):
+def get_node_mount_params(node_key: str):
     """
     Get mount parameters for a node
     """
-    if template_name is None or template_name == "":
-        raise HTTPException(status_code=400, detail='template_name parameter is required and cannot be empty')
-
+    if not noodle.has_node(node_key):
+        raise HTTPException(status_code=404, detail=f'Node "{node_key}" not found')
+    
     try:
-        mount_params = noodle.get_node_mount_params(node_key, template_name)
+        mount_params, template_name = noodle.get_node_mount_params(node_key)
         if mount_params is None:
-            if not noodle.has_node(node_key):
-                raise HTTPException(status_code=404, detail=f'Node "{node_key}" not found')
             mount_params = ''
 
-        return MountParamsResponse(mount_params=mount_params)
+        return MountParamsResponse(mount_params=mount_params, template_name=template_name)
     except Exception as e:
         message = f'Error getting mount parameters: {e}'
         logger.error(message)
