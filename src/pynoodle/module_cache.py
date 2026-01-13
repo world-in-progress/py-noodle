@@ -60,17 +60,16 @@ class ICRMModule:
 @dataclass
 class ResourceNodeTemplate:
     crm: Type[T]
+    mount: Callable[[str, dict | None], None] = lambda x, y: None
+    unmount: Callable[[str], None] = lambda x: None
+    privatization: Callable[[str, dict | None], dict | None] = lambda x, y: y
     pack: Callable[[str, str], tuple[str, int]] = lambda x, y: ('', 0) # pack(node_key) -> compress file path
     unpack: Callable[[str, str, str| None], None] = lambda x, y, z : None
-    unmount: Callable[[str], None] = lambda x: None
-    mount: Callable[[str, dict | None], dict | None] = lambda x, y: y
-    privatization: Callable[[str, dict | None], dict | None] = lambda x, y: y
 
     def __post_init__(self):
         if not self.crm:
             raise ValueError('CRM class must be provided for ResourceNodeTemplate')
 
-    
 @dataclass
 class ResourceNodeTemplateModule:
     name: str
