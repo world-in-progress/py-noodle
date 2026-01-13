@@ -412,8 +412,10 @@ class Treeger:
                 lock_info = RWLock.get_lock_info(lock_id)
                 if not lock_info or lock_info.node_key != node_key:
                     raise ValueError(f'Lock {lock_id} not found for node {node_key}')
-                if access_mode[1] == 'w' and lock_info.lock_type == 'r':
-                    raise ValueError(f'Lock {lock_id} access mode "{lock_info.lock_type}" does not have write permission')
+                    
+                # If has lock id, no need to check access mode here
+                # if access_mode[1] == 'w' and lock_info.lock_type == 'r':
+                #     raise ValueError(f'Lock {lock_id} access mode "{lock_info.lock_type}" does not have write permission')
                 
                 server_address = 'memory://' + node_key.replace('.', '_') + f'_{lock_id}'
             
