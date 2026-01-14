@@ -18,7 +18,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.get('/', response_model=ResourceNodeInfo)
-def get_node_info(node_key: str, child_start_index: int = 0, child_end_index: int = None):
+def get_info(node_key: str, child_start_index: int = 0, child_end_index: int = None):
     try:
         node_info = noodle.get_node_info(node_key, child_start_index, child_end_index)
         if not node_info:
@@ -29,7 +29,7 @@ def get_node_info(node_key: str, child_start_index: int = 0, child_end_index: in
         raise HTTPException(status_code=500, detail='Internal Server Error')
 
 @router.get('/mount_params', response_model=MountParamsResponse)
-def get_node_mount_params(node_key: str):
+def get_mount_params(node_key: str):
     """
     Get mount parameters for a node
     """
@@ -48,7 +48,7 @@ def get_node_mount_params(node_key: str):
         raise HTTPException(status_code=500, detail=message)
 
 @router.get('/link', response_model=LockInfo)
-def link_node(icrm_tag: str, node_key: str, access_mode: Literal['r', 'w']):
+def link(icrm_tag: str, node_key: str, access_mode: Literal['r', 'w']):
     try:
         # Try to get ICRM
         icrm_module = noodle.module_cache.icrm_modules.get(icrm_tag)
@@ -64,7 +64,7 @@ def link_node(icrm_tag: str, node_key: str, access_mode: Literal['r', 'w']):
         raise HTTPException(status_code=500, detail=f'Error linking nodes: {e}')
 
 @router.get('/unlink', response_model=UnlinkInfo)
-def unlink_node(node_key: str, lock_id: str):
+def unlink(node_key: str, lock_id: str):
     try:
         success, error = noodle.unlink(node_key, lock_id)
         if not success and error:
@@ -75,7 +75,7 @@ def unlink_node(node_key: str, lock_id: str):
         raise HTTPException(status_code=500, detail=f'Error unlinking node: {e}')
 
 @router.post('/mount', response_model=MountResponse)
-def mount_node(mount_request: MountRequest):
+def mount(mount_request: MountRequest):
     """
     Mount a node
     """
@@ -148,7 +148,7 @@ def mount_node(mount_request: MountRequest):
         raise HTTPException(status_code=500, detail=message)
 
 @router.post('/unmount')
-def unmount_node(node_key: str):
+def unmount(node_key: str):
     """
     Unmount a node
     """
@@ -162,22 +162,8 @@ def unmount_node(node_key: str):
         logger.error(message)
         raise HTTPException(status_code=500, detail=message)
 
-def parse_target_resource_path(launch_params_str: str, node_key: str) -> str:
-    """
-    Parse the target resource path from the startup arguments.
-    """
-    try:
-        import json
-        launch_params = json.loads(launch_params_str)
-        target_resource_path = launch_params.get('resource_space')
-        if not target_resource_path:
-            raise ValueError(f'Node "{node_key}" has no resource_space in launch parameters')
-        return target_resource_path
-    except json.JSONDecodeError:
-        raise ValueError(f'Invalid launch parameters for node "{node_key}"')
-
 @router.post('/push', response_model=PushResponse)
-def push_node(template_name: str, source_node_key: str, target_node_key: str):
+def push(template_name: str, source_node_key: str, target_node_key: str):
     """
     Push a node to remote resource tree.
     """
@@ -246,7 +232,7 @@ def push_node(template_name: str, source_node_key: str, target_node_key: str):
         raise HTTPException(status_code=500, detail=message)
 
 @router.post('/pull_from', include_in_schema=False)
-def pull_node(template_name: str, target_node_key: str, source_node_key:str, chunk_data:str, chunk_index:int, is_last_chunk: bool):
+def pull_from(template_name: str, target_node_key: str, source_node_key:str, chunk_data:str, chunk_index:int, is_last_chunk: bool):
     try:
         source_temp_path = settings.MEMORY_TEMP_PATH / 'push_cache' / f'{target_node_key}.tar.gz'
         source_temp_path.parent.mkdir(parents=True, exist_ok=True)
@@ -283,7 +269,7 @@ def pull_node(template_name: str, target_node_key: str, source_node_key:str, chu
                 source_temp_path.parent.rmdir()
         
 @router.post('/pull', response_model=PullResponse)
-def pull_node(template_name: str, target_node_key: str, source_node_key: str):
+def pull(template_name: str, target_node_key: str, source_node_key: str):
     """
     Pull a node from remote resource tree.
     """
