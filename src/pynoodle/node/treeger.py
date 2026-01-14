@@ -442,7 +442,7 @@ class Treeger:
             if not lock_id:
                 node.terminate()
     
-    def get_node_info(self, node_key: str, child_start_index: int = 0, child_end_index: int | None = None) -> ResourceNodeInfo | None:
+    def get_info(self, node_key: str, child_start_index: int = 0, child_end_index: int | None = None) -> ResourceNodeInfo | None:
         # Check if node exists in the scene
         if not self._has_node(node_key):
             return None
