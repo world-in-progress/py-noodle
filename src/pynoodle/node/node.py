@@ -185,8 +185,8 @@ class ResourceNode(IResourceNode[T]):
             # Platform-specific subprocess arguments
             kwargs = {}
             if sys.platform != 'win32':
-                # Unix-specific: create new process group
-                kwargs['preexec_fn'] = os.setsid
+                # On Unix-like systems, start the process in a new session to detach it
+                kwargs['start_new_session'] = True
             
             cmd = [
                 sys.executable,
