@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 @router.get('/', response_model=ResourceNodeInfo)
 def get_info(node_key: str, child_start_index: int = 0, child_end_index: int = None):
     try:
-        node_info = noodle.get_node_info(node_key, child_start_index, child_end_index)
+        node_info = noodle.get_info(node_key, child_start_index, child_end_index)
         if not node_info:
             raise HTTPException(status_code=404, detail='Node not found')
         return node_info
