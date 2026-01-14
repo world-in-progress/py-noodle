@@ -6,7 +6,6 @@ import importlib
 from dataclasses import dataclass
 from typing import TypeVar, Type, Callable
 
-
 from .config import settings
 from .schemas.config import NoodleConfiguration
 

@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "c-two>=0.2.6",
+    "click>=8.3.1",
     "fastapi>=0.116.1",
     "pyyaml>=6.0.2",
 ]
@@ -22,3 +23,6 @@ py-noodle = { workspace = true }
 [build-system]
 requires = ["setuptools>=40.8.0", "cython>=3.0.0"]
 build-backend = "setuptools.build_meta"
+
+[project.scripts]
+noodle = "pynoodle.cli:cli"
