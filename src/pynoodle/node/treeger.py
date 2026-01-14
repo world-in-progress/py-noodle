@@ -572,3 +572,45 @@ class Treeger:
             # Remove the lock
             RWLock.remove_lock(lock_id)
             return True, error
+
+    def re_privatize(self, template_name: str):
+        """
+        Re-privatize resource nodes' launch params based on the specified template,
+        if the resource node template's privatization function is modified.
+        
+        Note:
+            This function should only be used by cli command `pynoodle re-privatize <template_name>`.
+        """
+        # Get the template module
+        template_module = self.module_cache.templates.get(template_name, None)
+        if template_module is None:
+            raise ValueError(f'ResourceNodeTemplate "{template_name}" not found in noodle module cache')
+        
+        # Get all nodes with the specified template
+        with self._connect_db() as conn:
+            cursor = conn.execute(f"""
+                SELECT {NODE_KEY}, {LAUNCH_PARAMS}, {MOUNT_PARAMS} FROM {NODE_TABLE} WHERE {TEMPLATE_NAME} = ?
+            """, (template_name,))
+            rows = cursor.fetchall()
+            
+            for row in rows:
+                node_key = row[NODE_KEY]
+                mount_params = json.loads(row[MOUNT_PARAMS]) if row[MOUNT_PARAMS] else {}
+                
+                # Call privatization function to get new launch params
+                new_launch_params = template_module.privatization(node_key, mount_params)
+                if new_launch_params is not None and not isinstance(new_launch_params, dict):
+                    raise ValueError(f'Launch parameters for node "{node_key}" must be a dictionary if provided')
+                
+                new_launch_params_json = json.dumps(new_launch_params, indent=4) if new_launch_params else None
+                
+                # Update the node's launch params in the database
+                self._update_node(
+                    node_key,
+                    parent_key=get_parent_key(node_key),
+                    template_name=template_name,
+                    launch_params=new_launch_params_json,
+                    mount_params=row[MOUNT_PARAMS]
+                )
+                
+                logger.info(f'Successfully re-privatized node "{node_key}" with ResourceNodeTemplate "{template_name}"')
